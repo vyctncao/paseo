@@ -37,6 +37,7 @@ import type { Theme } from "@/styles/theme";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
+import { SidebarWorkspaceAgentList } from "@/components/sidebar/sidebar-workspace-agent-list";
 import {
   Archive,
   CircleAlert,
@@ -1706,6 +1707,12 @@ function WorkspaceRowWithMenu({
         onRename={handleOpenRename}
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
+      />
+      <SidebarWorkspaceAgentList
+        serverId={workspace.serverId}
+        workspaceId={workspace.workspaceId}
+        branch={workspace.currentBranch}
+        displayName={workspace.name}
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
