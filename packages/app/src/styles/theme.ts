@@ -107,7 +107,7 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty";
+export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty" | "black";
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -230,6 +230,11 @@ interface DarkThemeConfig {
   surfaceDiffEmpty: string;
   surfaceSidebar: string;
   surfaceSidebarHover: string;
+  // Defaults to `surface1`. Override when the workspace pane must match the app
+  // background rather than sit one step above it.
+  surfaceWorkspace?: string;
+  // Defaults to the neutral near-white `#fafafa`. Override for a tinted text color.
+  foreground?: string;
   foregroundMuted: string;
   scrollbarHandle: string;
   border: string;
@@ -258,6 +263,7 @@ const darkTerminalAnsi = {
 } as const;
 
 function buildDarkSemanticColors(tint: DarkThemeConfig) {
+  const foreground = tint.foreground ?? "#fafafa";
   return {
     surface0: tint.surface0,
     surface1: tint.surface1,
@@ -267,9 +273,9 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceDiffEmpty: tint.surfaceDiffEmpty,
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
-    surfaceWorkspace: tint.surface1,
+    surfaceWorkspace: tint.surfaceWorkspace ?? tint.surface1,
 
-    foreground: "#fafafa",
+    foreground,
     foregroundMuted: tint.foregroundMuted,
 
     scrollbarHandle: tint.scrollbarHandle,
@@ -289,11 +295,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Legacy aliases (for gradual migration)
     background: tint.surface0,
     popover: tint.surface2,
-    popoverForeground: "#fafafa",
-    primary: "#fafafa",
+    popoverForeground: foreground,
+    primary: foreground,
     primaryForeground: tint.surface0,
     secondary: tint.surface2,
-    secondaryForeground: "#fafafa",
+    secondaryForeground: foreground,
     muted: tint.surface2,
     mutedForeground: tint.foregroundMuted,
     accentBorder: tint.borderAccent,
@@ -305,11 +311,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     terminal: {
       background: tint.surface0,
-      foreground: "#fafafa",
-      cursor: "#fafafa",
+      foreground,
+      cursor: foreground,
       cursorAccent: tint.surface0,
       selectionBackground: "rgba(255, 255, 255, 0.2)",
-      selectionForeground: "#fafafa",
+      selectionForeground: foreground,
       black: tint.surfaceSidebar,
       ...darkTerminalAnsi,
       brightBlack: tint.surface3,
@@ -379,23 +385,30 @@ const midnightDarkColors = buildDarkSemanticColors({
   destructive: "#c44a52", // red with a hint of cool lean against the blue tint
 });
 
-// Claude — warm neutral with subtle orange undertone
+// Claude — the Claude desktop app's own dark palette. Values are the `.darkTheme`
+// CSS custom properties from Claude.app, converted from HSL to hex:
+//   bg-100 #262624 (app bg) · bg-200 #1f1e1d (sidebar) · bg-000 #30302e (elevated)
+//   text-000 #faf9f5 · text-400 #9c9a92 · accent-brand (clay) #d97757 · danger-100 #dd5353
+// Claude's dark `border-*` tokens are a *light* color (#dedcd1) applied at low alpha,
+// so `border`/`borderAccent` are that color pre-composited over the surface beneath it.
 const claudeDarkColors = buildDarkSemanticColors({
-  surface0: "#1f1f1e",
-  surface1: "#262523",
-  surface2: "#2f2d2b",
-  surface3: "#4a4745",
-  surface4: "#605d5b",
-  surfaceDiffEmpty: "#2a2826",
-  surfaceSidebar: "#1a1918",
-  surfaceSidebarHover: "#222120",
-  foregroundMuted: "#ada9a5",
-  scrollbarHandle: "#78746f",
-  border: "#2c2a27",
-  borderAccent: "#36332f",
-  accent: "#d97757",
-  accentBright: "#e89a7f",
-  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the Claude orange accent
+  surface0: "#262624", // bg-100
+  surface1: "#2b2a28", // hover, one step above the app bg
+  surface2: "#30302e", // bg-000 — bubbles, inputs, popovers
+  surface3: "#3e3e3b",
+  surface4: "#53524f",
+  surfaceDiffEmpty: "#2b2a28",
+  surfaceSidebar: "#1f1e1d", // bg-200
+  surfaceSidebarHover: "#262624",
+  surfaceWorkspace: "#262624", // matches the app bg exactly, as Claude's chat pane does
+  foreground: "#faf9f5", // text-000 — warm white, not neutral #fafafa
+  foregroundMuted: "#9c9a92", // text-400
+  scrollbarHandle: "#53524f",
+  border: "#3e3e3b", // border-300 @ 8% over bg-100
+  borderAccent: "#32312f",
+  accent: "#d97757", // accent-brand (clay)
+  accentBright: "#e79a80",
+  destructive: "#dd5353", // danger-100
 });
 
 // Ghostty — blue-tinted dark based on Ghostty default background
@@ -415,6 +428,27 @@ const ghosttyDarkColors = buildDarkSemanticColors({
   accent: "#89b4fa",
   accentBright: "#b4d0fc",
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
+});
+
+// Black — pure black surfaces for OLED displays. surface0 and surfaceSidebar are
+// both #000000, so sidebar/main separation comes from the border and from
+// surfaceWorkspace (which the builder maps to surface1), not from a darker sidebar.
+const blackDarkColors = buildDarkSemanticColors({
+  surface0: "#000000",
+  surface1: "#0a0a0a",
+  surface2: "#161616",
+  surface3: "#2a2a2a",
+  surface4: "#3d3d3d",
+  surfaceDiffEmpty: "#121212",
+  surfaceSidebar: "#000000",
+  surfaceSidebarHover: "#141414",
+  foregroundMuted: "#9a9a9a",
+  scrollbarHandle: "#5a5a5a",
+  border: "#232323",
+  borderAccent: "#2e2e2e",
+  accent: "#20744A",
+  accentBright: "#7ccba0",
+  destructive: "#c44a4a", // neutral red, hue 0 — no surface tint to lean against
 });
 
 export const SPACING = {
@@ -568,6 +602,7 @@ export const darkZincTheme = buildDarkTheme(zincDarkColors);
 export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
 export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
+export const darkBlackTheme = buildDarkTheme(blackDarkColors);
 
 export const lightTheme = {
   colorScheme: "light" as const,
@@ -611,7 +646,8 @@ type UnistylesThemeKey =
   | "darkZinc"
   | "darkMidnight"
   | "darkClaude"
-  | "darkGhostty";
+  | "darkGhostty"
+  | "darkBlack";
 
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
@@ -620,6 +656,7 @@ export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   midnight: "darkMidnight",
   claude: "darkClaude",
   ghostty: "darkGhostty",
+  black: "darkBlack",
 };
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
@@ -629,4 +666,5 @@ export const THEME_SWATCHES: Record<ThemeName, string> = {
   midnight: "#4A6BA8",
   claude: "#D97757",
   ghostty: "#8caaee",
+  black: "#000000",
 };

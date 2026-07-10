@@ -1594,6 +1594,7 @@ export const es: TranslationResources = {
           midnight: "Medianoche",
           claude: "claudio",
           ghostty: "fantasmal",
+          black: "Negro",
           auto: "Sistema",
         },
       },
