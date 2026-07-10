@@ -117,6 +117,7 @@ import {
   SessionAutosyncService,
   type SessionAutosyncSettings,
 } from "./agent/session-autosync-service.js";
+import { listCodexPets, resolvePetSpritesheetPath } from "./pets/codex-pets.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -662,6 +663,35 @@ export async function createPaseoDaemon(
       version: daemonVersion,
       listen: formatListenTarget(boundListenTarget ?? listenTarget),
     });
+  });
+
+  // Codex pets live on the daemon host's filesystem; clients (phone, web) cannot
+  // read it, so the daemon lists them and serves the spritesheet bytes.
+  app.get("/api/pets", (_req, res) => {
+    void (async () => {
+      try {
+        res.json({ pets: await listCodexPets() });
+      } catch (error) {
+        // No pets is normal (Codex may not be installed); never fail the request.
+        logger.warn({ err: error }, "Failed to list Codex pets");
+        res.json({ pets: [] });
+      }
+    })();
+  });
+
+  app.get("/api/pets/:petId/spritesheet", (req, res) => {
+    void (async () => {
+      try {
+        const spritesheetPath = await resolvePetSpritesheetPath(req.params.petId);
+        if (!spritesheetPath) {
+          res.status(404).end();
+          return;
+        }
+        res.sendFile(spritesheetPath);
+      } catch {
+        res.status(404).end();
+      }
+    })();
   });
 
   const handleFileDownload = async (req: express.Request, res: express.Response): Promise<void> => {
