@@ -139,6 +139,18 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
+// Background import of external CLI sessions (Claude Code, Codex, OpenCode) into
+// the workspaces that already exist. `providers` is an allowlist; a provider only
+// participates if it also advertises session-listing support.
+const MutableSessionAutosyncConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    intervalSeconds: z.number().default(60),
+    providers: z.array(z.string()).default([]),
+    maxImportsPerPass: z.number().default(25),
+  })
+  .passthrough();
+export const DEFAULT_SESSION_AUTOSYNC_PROVIDERS = ["claude", "codex", "opencode"] as const;
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -147,6 +159,12 @@ export const MutableDaemonConfigSchema = z
       })
       .passthrough(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
+    sessionAutosync: MutableSessionAutosyncConfigSchema.default({
+      enabled: false,
+      intervalSeconds: 60,
+      providers: [...DEFAULT_SESSION_AUTOSYNC_PROVIDERS],
+      maxImportsPerPass: 25,
+    }),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
     autoArchiveAfterMerge: z.boolean().default(false),
@@ -160,6 +178,7 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    sessionAutosync: MutableSessionAutosyncConfigSchema.partial().optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),

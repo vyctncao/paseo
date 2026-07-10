@@ -205,7 +205,7 @@ function buildImportPersistenceHandle(input: {
   };
 }
 
-async function collectImportedProviderSessionHandles(
+export async function collectImportedProviderSessionHandles(
   agentManager: Pick<AgentManager, "listAgents">,
   agentStorage: Pick<AgentStorage, "list">,
 ): Promise<Set<string>> {
@@ -222,11 +222,11 @@ async function collectImportedProviderSessionHandles(
   return handles;
 }
 
-function toProviderSessionHandleKey(provider: string, providerHandleId: string): string {
+export function toProviderSessionHandleKey(provider: string, providerHandleId: string): string {
   return `${provider}\0${providerHandleId}`;
 }
 
-function isMetadataGenerationSession(input: { firstPromptPreview: string | null }): boolean {
+export function isMetadataGenerationSession(input: { firstPromptPreview: string | null }): boolean {
   return (
     input.firstPromptPreview?.trimStart().startsWith(METADATA_GENERATION_PROMPT_PREFIX) ?? false
   );

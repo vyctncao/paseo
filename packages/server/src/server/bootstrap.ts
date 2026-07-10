@@ -113,6 +113,10 @@ import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
+import {
+  SessionAutosyncService,
+  type SessionAutosyncSettings,
+} from "./agent/session-autosync-service.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -142,6 +146,7 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@getpaseo/protocol/messages";
+import { DEFAULT_SESSION_AUTOSYNC_PROVIDERS } from "@getpaseo/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -343,6 +348,7 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
+  sessionAutosync?: SessionAutosyncSettings;
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
@@ -460,6 +466,12 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
   const initialConfig: MutableDaemonConfig = {
     mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    sessionAutosync: config.sessionAutosync ?? {
+      enabled: false,
+      intervalSeconds: 60,
+      providers: [...DEFAULT_SESSION_AUTOSYNC_PROVIDERS],
+      maxImportsPerPass: 25,
+    },
     providers,
     metadataGeneration: {
       providers: config.metadataGeneration?.providers ?? [],
@@ -803,6 +815,22 @@ export async function createPaseoDaemon(
   })();
   await chatService.initialize();
   logger.info({ elapsed: elapsed() }, "Chat service initialized");
+
+  // Background import of external CLI sessions. Reads its settings live from the
+  // config store so toggling `sessionAutosync.enabled` takes effect without a
+  // daemon restart. `start()` is a no-op while disabled.
+  const sessionAutosync = new SessionAutosyncService({
+    agentManager,
+    agentStorage,
+    workspaceRegistry,
+    logger,
+    settings: daemonConfigStore.get().sessionAutosync,
+  });
+  daemonConfigStore.onFieldChange("sessionAutosync", () => {
+    sessionAutosync.updateSettings(daemonConfigStore.get().sessionAutosync);
+  });
+  sessionAutosync.start();
+
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
     paseoHome: config.paseoHome,
@@ -1443,6 +1471,7 @@ export async function createPaseoDaemon(
 
   const stop = async () => {
     scriptHealthMonitor.stop();
+    sessionAutosync.stop();
     await closeAllAgents(logger, agentManager);
     await agentManager.flush().catch(() => undefined);
     detachAgentStoragePersistence();

@@ -213,6 +213,13 @@ function mergeMutableConfigIntoPersistedConfig(params: {
         ...persisted.daemon?.browserTools,
         enabled: browserToolsEnabled,
       },
+      sessionAutosync: {
+        ...persisted.daemon?.sessionAutosync,
+        enabled: mutable.sessionAutosync.enabled,
+        intervalSeconds: mutable.sessionAutosync.intervalSeconds,
+        providers: mutable.sessionAutosync.providers,
+        maxImportsPerPass: mutable.sessionAutosync.maxImportsPerPass,
+      },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
       appendSystemPrompt: mutable.appendSystemPrompt,

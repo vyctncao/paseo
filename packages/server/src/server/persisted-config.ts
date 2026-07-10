@@ -246,6 +246,15 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        sessionAutosync: z
+          .object({
+            enabled: z.boolean().optional(),
+            intervalSeconds: z.number().optional(),
+            providers: z.array(z.string()).optional(),
+            maxImportsPerPass: z.number().optional(),
+          })
+          .passthrough()
+          .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),

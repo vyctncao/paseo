@@ -6,6 +6,8 @@ import { z } from "zod";
 import { expandTilde } from "../utils/path.js";
 
 import type { PaseoDaemonConfig } from "./bootstrap.js";
+import type { SessionAutosyncSettings } from "./agent/session-autosync-service.js";
+import { DEFAULT_SESSION_AUTOSYNC_PROVIDERS } from "@getpaseo/protocol/messages";
 import {
   loadPersistedConfig,
   LogFormatSchema,
@@ -419,6 +421,18 @@ function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedCo
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
 
+function resolveSessionAutosync(
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): SessionAutosyncSettings {
+  const stored = persisted.daemon?.sessionAutosync;
+  return {
+    enabled: stored?.enabled ?? false,
+    intervalSeconds: stored?.intervalSeconds ?? 60,
+    providers: stored?.providers ?? [...DEFAULT_SESSION_AUTOSYNC_PROVIDERS],
+    maxImportsPerPass: stored?.maxImportsPerPass ?? 25,
+  };
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -429,6 +443,7 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    sessionAutosync: resolveSessionAutosync(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -457,6 +472,7 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    sessionAutosync,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -495,6 +511,7 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    sessionAutosync,
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,
     appendSystemPrompt,
