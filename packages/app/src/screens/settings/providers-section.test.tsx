@@ -221,6 +221,12 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
   return {
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
+    sessionAutosync: {
+      enabled: false,
+      intervalSeconds: 60,
+      providers: [],
+      maxImportsPerPass: 25,
+    },
     providers,
     metadataGeneration: { providers: [] },
     autoArchiveAfterMerge: false,

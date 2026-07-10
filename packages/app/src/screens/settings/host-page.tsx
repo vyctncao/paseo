@@ -68,6 +68,7 @@ import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
+import { SessionAutosyncCard } from "./session-autosync-card";
 import { restartDaemonFromSettings } from "./daemon-restart";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
@@ -271,6 +272,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
         <SettingsSection title={t("settings.hostSections.agents")}>
           <InjectPaseoToolsCard serverId={serverId} />
           <BrowserToolsOptInCard serverId={serverId} />
+          <SessionAutosyncCard serverId={serverId} />
           <AppendSystemPromptCard serverId={serverId} />
         </SettingsSection>
       ) : (

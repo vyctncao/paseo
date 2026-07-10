@@ -11,6 +11,12 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
   return {
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: browserToolsEnabled },
+    sessionAutosync: {
+      enabled: false,
+      intervalSeconds: 60,
+      providers: [],
+      maxImportsPerPass: 25,
+    },
     providers: {},
     metadataGeneration: { providers: [] },
     autoArchiveAfterMerge: false,
