@@ -48,6 +48,7 @@ import {
   reconcileMissingAgentStateWithPresentAgent,
 } from "@/panels/agent-panel-load-state";
 import { AgentContextPanel } from "@/panels/agent-context-panel";
+import { shouldShowAgentContextPanel } from "@/panels/agent-context-panel-visibility";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
@@ -69,7 +70,7 @@ import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
-import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { collectAllPanes, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
@@ -717,6 +718,7 @@ function ChatAgentContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const { workspaceId } = usePaneContext();
   const { api: toastApi, toast: toastState, dismiss: dismissToast } = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
@@ -1073,6 +1075,7 @@ function ChatAgentContent({
   return (
     <ChatAgentReadyContent
       serverId={serverId}
+      workspaceId={workspaceId}
       agentId={agentId}
       isPaneFocused={isPaneFocused}
       isArchivingCurrentAgent={isArchivingCurrentAgent}
@@ -1098,6 +1101,7 @@ function ChatAgentContent({
 
 const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   serverId,
+  workspaceId,
   agentId,
   isPaneFocused,
   isArchivingCurrentAgent,
@@ -1119,6 +1123,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile,
 }: {
   serverId: string;
+  workspaceId: string;
   agentId: string;
   isPaneFocused: boolean;
   isArchivingCurrentAgent: boolean;
@@ -1166,7 +1171,21 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     AGENT_CONTEXT_PANEL_BREAKPOINT,
     { initialIsBelow: true },
   );
-  const showContextPanel = isWeb && !isContextPanelHidden;
+  const workspacePersistenceKey = useMemo(
+    () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
+    [serverId, workspaceId],
+  );
+  const workspacePaneCount = useWorkspaceLayoutStore((state) => {
+    const layout = workspacePersistenceKey
+      ? state.layoutByWorkspace[workspacePersistenceKey]
+      : undefined;
+    return layout ? collectAllPanes(layout.root).length : 1;
+  });
+  const showContextPanel = shouldShowAgentContextPanel({
+    isWeb,
+    isBelowBreakpoint: isContextPanelHidden,
+    paneCount: workspacePaneCount,
+  });
   const { pickImages } = useImageAttachmentPicker();
   const addSource = useCallback(async () => {
     try {

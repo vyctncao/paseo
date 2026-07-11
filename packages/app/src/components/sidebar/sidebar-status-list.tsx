@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView, type PressableStateCallbackType } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
@@ -97,6 +97,7 @@ interface StatusWorkspaceListProps {
   onWorkspacePress?: () => void;
   hostLabelByServerId: ReadonlyMap<string, string>;
   showHostLabels: boolean;
+  footer?: ReactNode;
 }
 
 export function SidebarStatusWorkspaceList({
@@ -107,6 +108,7 @@ export function SidebarStatusWorkspaceList({
   onWorkspacePress,
   hostLabelByServerId,
   showHostLabels,
+  footer,
 }: StatusWorkspaceListProps) {
   const groups = useMemo(
     () => buildStatusGroups(workspaces, projectNamesByKey),
@@ -145,6 +147,7 @@ export function SidebarStatusWorkspaceList({
             hostLabelByServerId={hostLabelByServerId}
             showHostLabels={showHostLabels}
           />
+          {footer}
         </NestableScrollContainer>
       ) : (
         <ScrollView
@@ -163,6 +166,7 @@ export function SidebarStatusWorkspaceList({
             hostLabelByServerId={hostLabelByServerId}
             showHostLabels={showHostLabels}
           />
+          {footer}
         </ScrollView>
       )}
     </View>

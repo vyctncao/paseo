@@ -39,6 +39,7 @@ describe("sidebar view store", () => {
   beforeEach(() => {
     useSidebarViewStore.setState({
       groupMode: "project",
+      statusFilter: "active",
       hostFilters: [],
     });
   });
@@ -89,6 +90,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "status",
+      statusFilter: "active",
       hostFilters: [],
     });
   });
@@ -101,6 +103,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "status",
+      statusFilter: "active",
       hostFilters: ["host-a"],
     });
   });
@@ -109,12 +112,20 @@ describe("sidebar view store", () => {
     expect(
       migrateSidebarViewState({
         groupMode: "status",
+        statusFilter: "archived",
         hostFilters: ["host-a", "host-b"],
       }),
     ).toEqual({
       groupMode: "status",
+      statusFilter: "archived",
       hostFilters: ["host-a", "host-b"],
     });
+  });
+
+  it("persists the active and archived visibility filter", () => {
+    useSidebarViewStore.getState().setStatusFilter("archived");
+
+    expect(useSidebarViewStore.getState().statusFilter).toBe("archived");
   });
 
   it("falls back to the legacy storage key when the new key is empty", async () => {

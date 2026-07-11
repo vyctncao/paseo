@@ -37,6 +37,7 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
 import { SidebarWorkspaceAgentList } from "@/components/sidebar/sidebar-workspace-agent-list";
+import { SidebarArchivedAgents } from "@/components/sidebar/sidebar-archived-agents";
 import {
   Archive,
   CircleAlert,
@@ -73,6 +74,7 @@ import {
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import {
@@ -2150,6 +2152,7 @@ export function SidebarWorkspaceList({
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
   const pathname = usePathname();
+  const statusFilter = useSidebarViewStore((state) => state.statusFilter);
   const hosts = useHosts();
   const hostLabelByServerId = useMemo(() => {
     const labels = new Map<string, string>();
@@ -2162,6 +2165,24 @@ export function SidebarWorkspaceList({
   const supportsMultiplicityByServerId = useHostFeatureMap(serverIds, "workspaceMultiplicity");
   const showHostLabels = useMemo(() => shouldShowSidebarHostLabels(projects), [projects]);
 
+  if (statusFilter === "archived") {
+    return (
+      <View style={styles.container}>
+        <SidebarArchivedAgents enabled scroll onWorkspacePress={onWorkspacePress} />
+      </View>
+    );
+  }
+
+  const archivedFooter =
+    statusFilter === "all" ? (
+      <SidebarArchivedAgents enabled scroll={false} onWorkspacePress={onWorkspacePress} />
+    ) : null;
+  const combinedFooter = (
+    <>
+      {archivedFooter}
+      {listFooterComponent}
+    </>
+  );
   const content =
     groupMode === "status" ? (
       <SidebarStatusModeWrapper
@@ -2171,6 +2192,7 @@ export function SidebarWorkspaceList({
         onWorkspacePress={onWorkspacePress}
         hostLabelByServerId={hostLabelByServerId}
         showHostLabels={showHostLabels}
+        footer={combinedFooter}
       />
     ) : (
       <ProjectModeList
@@ -2180,7 +2202,7 @@ export function SidebarWorkspaceList({
         shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
         onWorkspacePress={onWorkspacePress}
         onAddProject={onAddProject}
-        listFooterComponent={listFooterComponent}
+        listFooterComponent={combinedFooter}
         parentGestureRef={parentGestureRef}
         pathname={pathname}
         hostLabelByServerId={hostLabelByServerId}
@@ -2199,6 +2221,7 @@ function SidebarStatusModeWrapper({
   onWorkspacePress,
   hostLabelByServerId,
   showHostLabels,
+  footer,
 }: {
   statusWorkspacePlacements: SidebarStatusWorkspacePlacement[];
   projectNamesByKey: Map<string, string>;
@@ -2206,6 +2229,7 @@ function SidebarStatusModeWrapper({
   onWorkspacePress?: () => void;
   hostLabelByServerId: ReadonlyMap<string, string>;
   showHostLabels: boolean;
+  footer?: ReactElement | null;
 }) {
   const showShortcutBadges = useShowShortcutBadges();
 
@@ -2218,6 +2242,7 @@ function SidebarStatusModeWrapper({
       onWorkspacePress={onWorkspacePress}
       hostLabelByServerId={hostLabelByServerId}
       showHostLabels={showHostLabels}
+      footer={footer}
     />
   );
 }

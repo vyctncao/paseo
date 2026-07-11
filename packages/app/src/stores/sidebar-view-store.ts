@@ -3,16 +3,19 @@ import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
 export type SidebarGroupMode = "project" | "status";
+export type SidebarStatusFilter = "all" | "active" | "archived";
 
 const SIDEBAR_VIEW_STORAGE_KEY = "sidebar-view";
 const LEGACY_SIDEBAR_GROUP_MODE_STORAGE_KEY = "sidebar-group-mode";
-const SIDEBAR_VIEW_STORE_VERSION = 2;
+const SIDEBAR_VIEW_STORE_VERSION = 3;
 
 interface SidebarViewStoreState {
   groupMode: SidebarGroupMode;
+  statusFilter: SidebarStatusFilter;
   // Empty means "all hosts". A non-empty list pins the sidebar to those hosts.
   hostFilters: string[];
   setGroupMode: (mode: SidebarGroupMode) => void;
+  setStatusFilter: (filter: SidebarStatusFilter) => void;
   toggleHostFilter: (serverId: string) => void;
   clearHostFilters: () => void;
   reconcileHostFilters: (serverIds: readonly string[]) => void;
@@ -20,11 +23,16 @@ interface SidebarViewStoreState {
 
 interface SidebarViewPersistedState {
   groupMode: SidebarGroupMode;
+  statusFilter: SidebarStatusFilter;
   hostFilters: string[];
 }
 
 function isSidebarGroupMode(value: unknown): value is SidebarGroupMode {
   return value === "project" || value === "status";
+}
+
+function isSidebarStatusFilter(value: unknown): value is SidebarStatusFilter {
+  return value === "all" || value === "active" || value === "archived";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,16 +65,19 @@ function readHostFilters(persistedState: Record<string, unknown>): string[] {
 
 export function migrateSidebarViewState(persistedState: unknown): SidebarViewPersistedState {
   if (!isRecord(persistedState)) {
-    return { groupMode: "project", hostFilters: [] };
+    return { groupMode: "project", statusFilter: "active", hostFilters: [] };
   }
 
   const legacyGroupMode = readLegacyGroupMode(persistedState);
   if (legacyGroupMode) {
-    return { groupMode: legacyGroupMode, hostFilters: [] };
+    return { groupMode: legacyGroupMode, statusFilter: "active", hostFilters: [] };
   }
 
   return {
     groupMode: isSidebarGroupMode(persistedState.groupMode) ? persistedState.groupMode : "project",
+    statusFilter: isSidebarStatusFilter(persistedState.statusFilter)
+      ? persistedState.statusFilter
+      : "active",
     hostFilters: readHostFilters(persistedState),
   };
 }
@@ -91,8 +102,10 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
   persist(
     (set) => ({
       groupMode: "project",
+      statusFilter: "active",
       hostFilters: [],
       setGroupMode: (mode) => set({ groupMode: mode }),
+      setStatusFilter: (filter) => set({ statusFilter: filter }),
       toggleHostFilter: (serverId) =>
         set((state) => ({
           hostFilters: state.hostFilters.includes(serverId)
@@ -119,6 +132,7 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
       storage: createJSONStorage(createSidebarViewStorage),
       partialize: (state) => ({
         groupMode: state.groupMode,
+        statusFilter: state.statusFilter,
         hostFilters: state.hostFilters,
       }),
       migrate: migrateSidebarViewState,

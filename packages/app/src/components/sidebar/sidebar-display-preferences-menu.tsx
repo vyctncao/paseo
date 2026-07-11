@@ -14,7 +14,11 @@ import { HostStatusDot } from "@/components/host-status-dot";
 import { isWeb as platformIsWeb } from "@/constants/platform";
 import { useAppSettings, type WorkspaceTitleSource } from "@/hooks/use-settings";
 import { useHosts } from "@/runtime/host-runtime";
-import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
+import {
+  useSidebarViewStore,
+  type SidebarGroupMode,
+  type SidebarStatusFilter,
+} from "@/stores/sidebar-view-store";
 
 const ThemedSettings2 = withUnistyles(Settings2);
 const filterColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -29,6 +33,12 @@ const WORKSPACE_TITLE_SOURCE_ITEMS: Array<{ value: WorkspaceTitleSource; label: 
   { value: "branch", label: "Branch name" },
 ];
 
+const STATUS_FILTER_ITEMS: Array<{ value: SidebarStatusFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+];
+
 interface DisplayPreferenceOption<Value extends string> {
   value: Value;
   label: string;
@@ -36,8 +46,10 @@ interface DisplayPreferenceOption<Value extends string> {
 
 export function SidebarDisplayPreferencesMenu() {
   const groupMode = useSidebarViewStore((state) => state.groupMode);
+  const statusFilter = useSidebarViewStore((state) => state.statusFilter);
   const hostFilters = useSidebarViewStore((state) => state.hostFilters);
   const setGroupMode = useSidebarViewStore((state) => state.setGroupMode);
+  const setStatusFilter = useSidebarViewStore((state) => state.setStatusFilter);
   const toggleHostFilter = useSidebarViewStore((state) => state.toggleHostFilter);
   const clearHostFilters = useSidebarViewStore((state) => state.clearHostFilters);
   const hosts = useHosts();
@@ -58,6 +70,13 @@ export function SidebarDisplayPreferencesMenu() {
       void updateSettings({ workspaceTitleSource: source });
     },
     [updateSettings],
+  );
+
+  const handleStatusFilterSelect = useCallback(
+    (filter: SidebarStatusFilter) => {
+      setStatusFilter(filter);
+    },
+    [setStatusFilter],
   );
 
   const triggerStyle = useCallback(
@@ -92,6 +111,19 @@ export function SidebarDisplayPreferencesMenu() {
             isSelected={groupMode === item.value}
             testIDPrefix="sidebar-grouping"
             onSelect={handleSelectMode}
+          />
+        ))}
+        <DropdownMenuSeparator />
+        <View style={styles.menuHeader}>
+          <Text style={styles.menuHeaderLabel}>Status</Text>
+        </View>
+        {STATUS_FILTER_ITEMS.map((item) => (
+          <DisplayPreferenceMenuItem
+            key={item.value}
+            item={item}
+            isSelected={statusFilter === item.value}
+            testIDPrefix="sidebar-status-filter"
+            onSelect={handleStatusFilterSelect}
           />
         ))}
         {showHostFilter ? (
