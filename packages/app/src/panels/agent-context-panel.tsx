@@ -459,11 +459,7 @@ export const AgentContextPanel = memo(function AgentContextPanel({
         <View style={styles.divider} />
 
         <SectionHeader title="Subagents" />
-        <SubagentsSection
-          rows={subagents}
-          timelineRows={timelineSubagents}
-          serverId={serverId}
-        />
+        <SubagentsSection rows={subagents} timelineRows={timelineSubagents} serverId={serverId} />
 
         <View style={styles.divider} />
 

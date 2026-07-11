@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "@/components/ui/status-badge";
+import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
 import { formatAgo } from "./format";
 import { getProviderUsageColors } from "./provider-colors";
@@ -20,6 +21,11 @@ function ProviderUsageIcon({ iconKey, size, color = "" }: ProviderUsageIconProps
   const Icon = getProviderIcon(iconKey);
   return <Icon size={size} color={color} />;
 }
+
+const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 function statusText(usage: ProviderUsage): string | null {
   if (usage.status === "available") return null;
@@ -45,13 +51,11 @@ export function ProviderUsageCard({
   displayEnabled?: boolean;
   onDisplayEnabledChange?: (enabled: boolean) => void;
 }) {
-  const { theme } = useUnistyles();
   const status = statusText(usage);
   const footer = footerText(usage);
   const balances = usage.balances ?? [];
   const details = usage.details ?? [];
   const providerColors = getProviderUsageColors(usage.providerId);
-  const iconColor = providerColors?.icon ?? theme.colors.foregroundMuted;
 
   const containerStyle = useMemo(
     () => [styles.container, compact ? styles.containerCompact : styles.containerPadded],
@@ -69,7 +73,15 @@ export function ProviderUsageCard({
   return (
     <View style={containerStyle}>
       <View style={styles.header}>
-        <ProviderUsageIcon iconKey={usage.providerId} size={14} color={iconColor} />
+        {providerColors ? (
+          <ProviderUsageIcon iconKey={usage.providerId} size={14} color={providerColors.icon} />
+        ) : (
+          <ThemedProviderUsageIcon
+            iconKey={usage.providerId}
+            size={14}
+            uniProps={foregroundMutedColorMapping}
+          />
+        )}
         <Text style={styles.name} numberOfLines={1}>
           {usage.displayName}
         </Text>

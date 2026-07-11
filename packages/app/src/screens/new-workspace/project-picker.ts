@@ -68,6 +68,14 @@ function projectOptionId(projectId: string): string {
   return `${PROJECT_OPTION_PREFIX}${projectId}`;
 }
 
+function resolveSelectedProjectOptionId(
+  selectedProject: HostProjectListItem | null,
+  isNoProjectSelected: boolean,
+): string {
+  if (isNoProjectSelected) return NO_PROJECT_OPTION_ID;
+  return selectedProject ? projectOptionId(selectedProject.projectKey) : "";
+}
+
 function computeProjectOptionData(projects: readonly HostProjectListItem[]) {
   const projectByOptionId = new Map<string, HostProjectListItem>();
   const options = projects.map((project) => {
@@ -224,11 +232,7 @@ export function useNewWorkspaceProjectPicker({
       : null,
     projectPickerOptions,
     projectByOptionId,
-    selectedProjectOptionId: isNoProjectSelected
-      ? NO_PROJECT_OPTION_ID
-      : selectedProject
-        ? projectOptionId(selectedProject.projectKey)
-        : "",
+    selectedProjectOptionId: resolveSelectedProjectOptionId(selectedProject, isNoProjectSelected),
     projectTriggerLabel: isNoProjectSelected
       ? "Don't work in a project"
       : (selectedProject?.projectName ?? "Choose project"),

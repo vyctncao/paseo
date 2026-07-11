@@ -201,7 +201,8 @@ function appendUniqueSource(
   sources.push(source);
 }
 
-const MARKDOWN_HTTP_LINK_PATTERN = /(?<!!)\[([^\]]+)]\((https?:\/\/[^)\s]+)(?:\s+["'][^)]*["'])?\)/gi;
+const MARKDOWN_HTTP_LINK_PATTERN =
+  /(?<!!)\[([^\]]+)]\((https?:\/\/[^)\s]+)(?:\s+["'][^)]*["'])?\)/gi;
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*]\((?:<[^>]+>|[^)\n]+)\)/g;
 const BARE_HTTP_URL_PATTERN = /https?:\/\/[^\s<>()\]]+/gi;
 

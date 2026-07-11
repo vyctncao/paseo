@@ -71,6 +71,10 @@ import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction 
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 
+function shouldSubmitMessageOnEnter(isCompact: boolean): boolean {
+  return isWeb && !isCompact;
+}
+
 export interface AttachmentMenuItem {
   id: string;
   label: string;
@@ -1681,7 +1685,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const shouldHandleWebKeyPress = isWeb;
-    const shouldSubmitOnEnter = isWeb && !isCompact;
+    const shouldSubmitOnEnter = shouldSubmitMessageOnEnter(isCompact);
 
     function handleDesktopKeyPress(event: WebTextInputKeyPressEvent) {
       if (!shouldHandleWebKeyPress) return;

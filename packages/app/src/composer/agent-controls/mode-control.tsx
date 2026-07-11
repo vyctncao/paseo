@@ -210,7 +210,10 @@ function AgentModeControlView({
     [open, disabled, isDangerousMode],
   );
 
-  const labelStyle = [styles.chipLabel, isDangerousMode && styles.chipLabelDangerous];
+  const labelStyle = useMemo(
+    () => [styles.chipLabel, isDangerousMode && styles.chipLabelDangerous],
+    [isDangerousMode],
+  );
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
