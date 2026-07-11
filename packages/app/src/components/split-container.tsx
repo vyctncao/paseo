@@ -1016,6 +1016,7 @@ function SplitPaneView({
         <View style={paneTabsStyle}>
           <TitlebarDragRegion />
           <WorkspaceDesktopTabsRow
+            hidden
             paneId={pane.id}
             isFocused={isFocused}
             tabs={desktopTabRowItems}

@@ -4401,7 +4401,11 @@ export class Session {
     const explicitTitle = request.title?.trim() || null;
     const promptTitle = resolveFirstAgentPromptTitle(request.firstAgentContext);
     const workspace = await createLocalCheckoutWorkspace(
-      { cwd, title: explicitTitle ?? promptTitle },
+      {
+        cwd,
+        title: explicitTitle ?? promptTitle,
+        projectId: request.source.projectId,
+      },
       {
         projectRegistry: this.projectRegistry,
         workspaceRegistry: this.workspaceRegistry,

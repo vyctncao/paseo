@@ -89,8 +89,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
+    // Minimal aesthetic: no divider under the top bar — the header shares the
+    // page background, so the title area reads as part of the content.
     userSelect: "none",
   },
   left: {

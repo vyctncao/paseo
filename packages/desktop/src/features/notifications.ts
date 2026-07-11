@@ -49,7 +49,10 @@ function getNotificationIcon(): Electron.NativeImage | null {
 }
 
 function focusSenderWindow(sender: Electron.WebContents): BrowserWindow | null {
-  const win = BrowserWindow.fromWebContents(sender) ?? BrowserWindow.getAllWindows()[0] ?? null;
+  const win =
+    BrowserWindow.fromWebContents(sender) ??
+    BrowserWindow.getAllWindows().find((candidate) => candidate.isFocusable()) ??
+    null;
   if (!win || win.isDestroyed()) {
     return null;
   }

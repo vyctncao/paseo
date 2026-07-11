@@ -7,6 +7,7 @@ import invariant from "tiny-invariant";
 import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { TerminalPane } from "@/components/terminal-pane";
+import { PanelChromeHeader } from "@/components/panel-chrome-header";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { queryClient } from "@/data/query-client";
@@ -75,7 +76,10 @@ function useTerminalPanelDescriptor(
 }
 
 function TerminalPanel() {
-  const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, workspaceId, target, openFileInWorkspace, closeCurrentTab } = usePaneContext();
+  invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
+  const descriptor = useTerminalPanelDescriptor(target, { serverId, workspaceId });
+  const { t } = useTranslation();
   const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
     workspaceDirectory: w.workspaceDirectory,
@@ -93,8 +97,6 @@ function TerminalPanel() {
       checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
     });
   }, [isGitCheckout, openFileExplorerForCheckout, serverId, workspaceDirectory]);
-  invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
-
   if (!isWorkspaceFocused) {
     return <View style={FLEX_FILL_STYLE} />;
   }
@@ -108,15 +110,24 @@ function TerminalPanel() {
   }
 
   return (
-    <TerminalPane
-      serverId={serverId}
-      cwd={workspaceDirectory}
-      terminalId={target.terminalId}
-      isWorkspaceFocused={isWorkspaceFocused}
-      isPaneFocused={isPaneFocused}
-      onOpenFileExplorer={handleOpenFileExplorer}
-      onOpenWorkspaceFile={openFileInWorkspace}
-    />
+    <View style={FLEX_FILL_STYLE}>
+      <PanelChromeHeader
+        icon="terminal"
+        title={descriptor.label}
+        subtitle={workspaceDirectory}
+        closeLabel={t("workspace.tabs.menu.close")}
+        onClose={closeCurrentTab}
+      />
+      <TerminalPane
+        serverId={serverId}
+        cwd={workspaceDirectory}
+        terminalId={target.terminalId}
+        isWorkspaceFocused={isWorkspaceFocused}
+        isPaneFocused={isPaneFocused}
+        onOpenFileExplorer={handleOpenFileExplorer}
+        onOpenWorkspaceFile={openFileInWorkspace}
+      />
+    </View>
   );
 }
 

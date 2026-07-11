@@ -41,7 +41,32 @@ export type AgentPetLifecycle =
  */
 export const PET_WAVE_DURATION_MS = 4_000;
 
-export const PET_FRAME_DURATION_MS = 120;
+/**
+ * Per-frame timing from the Codex-compatible pet atlas contract. Standard rows
+ * intentionally leave the remaining cells transparent, so consumers must wrap
+ * at the state's real frame count rather than walking all eight columns.
+ */
+export const PET_ANIMATION_DURATIONS_MS: Readonly<Record<PetState, readonly number[]>> = {
+  idle: [280, 110, 110, 140, 140, 320],
+  "running-right": [120, 120, 120, 120, 120, 120, 120, 220],
+  "running-left": [120, 120, 120, 120, 120, 120, 120, 220],
+  waving: [140, 140, 140, 280],
+  jumping: [140, 140, 140, 140, 280],
+  failed: [140, 140, 140, 140, 140, 140, 140, 240],
+  waiting: [150, 150, 150, 150, 150, 260],
+  running: [120, 120, 120, 120, 120, 220],
+  review: [150, 150, 150, 150, 150, 280],
+};
+
+export function petFrameCount(state: PetState): number {
+  return PET_ANIMATION_DURATIONS_MS[state].length;
+}
+
+export function petFrameDurationMs(state: PetState, frame: number): number {
+  const durations = PET_ANIMATION_DURATIONS_MS[state];
+  const column = ((frame % durations.length) + durations.length) % durations.length;
+  return durations[column] ?? durations[0] ?? 120;
+}
 
 export function petStateForLifecycle(lifecycle: AgentPetLifecycle): PetState {
   switch (lifecycle) {
@@ -85,7 +110,8 @@ export interface PetFrameRect {
  */
 export function petFrameRect(state: PetState, frame: number, rows: number): PetFrameRect {
   const safeState = petStateIsRenderable(state, rows) ? state : "idle";
-  const column = ((frame % PET_FRAMES_PER_ROW) + PET_FRAMES_PER_ROW) % PET_FRAMES_PER_ROW;
+  const frameCount = petFrameCount(safeState);
+  const column = ((frame % frameCount) + frameCount) % frameCount;
   // `|| 0` normalizes the -0 that negating a zero column/row would otherwise yield.
   return {
     offsetX: -(column * PET_CELL_WIDTH) || 0,

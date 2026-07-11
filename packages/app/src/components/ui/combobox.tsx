@@ -1675,7 +1675,9 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
   },
   desktopContainer: {
-    backgroundColor: theme.colors.surface0,
+    // Floating menus need an opaque surface over glass themes. `surface0` is
+    // intentionally translucent there so the backdrop can show through app panes.
+    backgroundColor: theme.colors.surfaceOverlay,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,

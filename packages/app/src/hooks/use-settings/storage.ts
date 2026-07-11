@@ -25,6 +25,9 @@ export const MAX_UI_FONT_SIZE = 24;
 export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 9;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
+export const DEFAULT_PET_SIZE = 112;
+export const MIN_PET_SIZE = 80;
+export const MAX_PET_SIZE = 224;
 export const MAX_FONT_FAMILY_LENGTH = 200;
 
 export interface AppSettings {
@@ -40,6 +43,10 @@ export interface AppSettings {
   syntaxTheme: SyntaxThemeId; // default "one"
   workspaceTitleSource: WorkspaceTitleSource;
   autoExpandReasoning: boolean;
+  /** Preferred Codex pet id. Null keeps the stable automatic assignment. */
+  selectedPetId: string | null;
+  /** Width of the persistent on-screen pet in logical pixels. */
+  petSize: number;
 }
 
 export interface Settings extends AppSettings {
@@ -60,6 +67,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   syntaxTheme: "one",
   workspaceTitleSource: "title",
   autoExpandReasoning: false,
+  selectedPetId: null,
+  petSize: DEFAULT_PET_SIZE,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -209,7 +218,22 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
   }
+  const selectedPetId = sanitizeSelectedPetId(stored.selectedPetId);
+  if (selectedPetId !== undefined) {
+    result.selectedPetId = selectedPetId;
+  }
+  const petSize = parsePetSize(stored.petSize);
+  if (petSize !== null) {
+    result.petSize = petSize;
+  }
   return result;
+}
+
+function sanitizeSelectedPetId(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const selectedPetId = value.trim();
+  return selectedPetId.length > 0 && selectedPetId.length <= 200 ? selectedPetId : undefined;
 }
 
 function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {
@@ -250,6 +274,10 @@ export function parseClampedFontSize(
     return null;
   }
   return Math.min(bounds.max, Math.max(bounds.min, Math.floor(numericValue)));
+}
+
+export function parsePetSize(value: unknown): number | null {
+  return parseClampedFontSize(value, { min: MIN_PET_SIZE, max: MAX_PET_SIZE });
 }
 
 export function sanitizeFontFamily(value: unknown): string | null {

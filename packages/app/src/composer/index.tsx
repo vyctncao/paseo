@@ -39,6 +39,7 @@ import {
   DraftAgentControls,
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
+import { AgentModeControl, DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
@@ -260,13 +261,46 @@ interface RenderLeftContentArgs {
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
   const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
+    return (
+      <DraftAgentControls
+        {...agentControls}
+        isCompactLayout={isCompactLayout}
+        showModeControl={false}
+      />
+    );
   }
   return (
     <AgentControls
       agentId={agentId}
       serverId={serverId}
       onDropdownClose={focusInput}
+      isCompactLayout={isCompactLayout}
+      showModeControl={false}
+    />
+  );
+}
+
+function renderModeContent(args: RenderLeftContentArgs): ReactElement {
+  const { agentControls, agentId, serverId, isCompactLayout } = args;
+  if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
+    return (
+      <DraftAgentModeControl
+        placement="toolbar"
+        selectedProvider={agentControls.selectedProvider}
+        providerDefinitions={agentControls.providerDefinitions}
+        modeOptions={agentControls.modeOptions}
+        selectedMode={agentControls.selectedMode}
+        onSelectMode={agentControls.onSelectMode}
+        disabled={agentControls.disabled}
+        isCompactLayout={isCompactLayout}
+      />
+    );
+  }
+  return (
+    <AgentModeControl
+      serverId={serverId}
+      agentId={agentId}
+      placement="toolbar"
       isCompactLayout={isCompactLayout}
     />
   );
@@ -1786,6 +1820,17 @@ export function Composer({
       }),
     [agentControls, agentId, focusInput, isCompactLayout, serverId],
   );
+  const modeContent = useMemo(
+    () =>
+      renderModeContent({
+        agentControls,
+        agentId,
+        serverId,
+        focusInput,
+        isCompactLayout,
+      }),
+    [agentControls, agentId, focusInput, isCompactLayout, serverId],
+  );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
     attachButtonRef.current = node;
@@ -1955,6 +2000,7 @@ export function Composer({
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
                 leftContent={leftContent}
+                modeContent={modeContent}
                 beforeVoiceContent={beforeVoiceContent}
                 rightContent={rightContent}
                 voiceServerId={serverId}

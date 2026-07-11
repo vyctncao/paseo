@@ -33,18 +33,19 @@ import {
   Plus,
   FolderGit2,
   SquareTerminal,
+  PawPrint,
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { PetsSection } from "@/screens/settings/pets/pets-section";
 import {
   useAppSettings,
   useSettings,
@@ -104,6 +105,7 @@ import {
   useEnableBuiltInDaemonOption,
 } from "@/desktop/hooks/use-enable-built-in-daemon-option";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import {
   buildOpenProjectRoute,
   buildProjectsSettingsRoute,
@@ -135,6 +137,7 @@ interface SidebarSectionItem {
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
+  { id: "pets", labelKey: "settings.sections.pets", icon: PawPrint },
   { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
   {
     id: "integrations",
@@ -1039,7 +1042,6 @@ function SettingsSidebar({
           </Fragment>
         ))}
       </View>
-      <SidebarSeparator />
       {hasHosts ? (
         <View style={sidebarStyles.list}>
           <Text style={sidebarStyles.groupLabel}>{t("settings.groups.host")}</Text>
@@ -1132,6 +1134,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const router = useRouter();
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const handleOpenProject = useOpenProjectPicker();
   const voiceAudioEngine = useVoiceAudioEngineOptional();
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
@@ -1416,6 +1419,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           );
         case "appearance":
           return <AppearanceSection />;
+        case "pets":
+          return <PetsSection serverId={activeHostServerId} />;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":
@@ -1445,6 +1450,23 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
     return null;
   })();
+
+  const addProjectButton = useMemo(() => {
+    if (view.kind !== "projects") {
+      return null;
+    }
+    return (
+      <Button
+        variant="default"
+        size="sm"
+        leftIcon={Plus}
+        onPress={handleOpenProject}
+        testID="settings-add-project"
+      >
+        {t("sidebar.actions.addProject")}
+      </Button>
+    );
+  }, [handleOpenProject, t, view.kind]);
 
   if (settingsLoading) {
     return (
@@ -1512,6 +1534,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         <BackHeader
           title={detailHeader?.title}
           titleAccessory={detailHeader?.titleAccessory}
+          rightContent={addProjectButton}
           onBack={detailBackHandler}
         />
         <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
@@ -1560,6 +1583,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               ) : null
             }
             leftStyle={desktopStyles.detailLeft}
+            right={addProjectButton}
           />
           <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
             <View style={styles.content}>{content}</View>
@@ -1673,11 +1697,18 @@ const desktopStyles = StyleSheet.create((theme) => ({
 }));
 
 const sidebarStyles = StyleSheet.create((theme) => ({
+  // Floating inset panel, matching the main workspace sidebar so the chrome is
+  // consistent across every page. Fill is surface0 (the page background) so the
+  // panel and content read as one surface. Same 12px inset / 22px radius chrome.
   desktopContainer: {
     width: 320,
-    borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceSidebar,
+    margin: theme.spacing[3],
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface0,
+    overflow: "hidden",
+    ...theme.shadow.lg,
   },
   scrollBody: {
     flex: 1,
@@ -1695,9 +1726,12 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   groupLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    letterSpacing: 1,
+    textTransform: "uppercase",
     color: theme.colors.foregroundMuted,
+    opacity: 0.75,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
   },

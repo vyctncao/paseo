@@ -39,14 +39,24 @@ function fillToneStyle(tone: ProviderUsageTone) {
   }
 }
 
-export function ProviderUsageBalanceBar({ balance }: { balance: ProviderUsageBalance }) {
+export function ProviderUsageBalanceBar({
+  balance,
+  accentColor,
+}: {
+  balance: ProviderUsageBalance;
+  accentColor?: string;
+}) {
   const { amountText, usedPct } = resolveBalance(balance);
   const tone = balance.tone ?? "default";
   const resetLabel = formatResetLabel(balance.resetsAt);
 
   const fillStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [styles.fill, fillToneStyle(tone), { width: `${clampPct(usedPct ?? 0)}%` }],
-    [usedPct, tone],
+    () => [
+      styles.fill,
+      accentColor ? { backgroundColor: accentColor } : fillToneStyle(tone),
+      { width: `${clampPct(usedPct ?? 0)}%` },
+    ],
+    [accentColor, usedPct, tone],
   );
 
   return (

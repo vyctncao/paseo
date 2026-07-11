@@ -184,6 +184,46 @@ describe("reconcileProjectSelection", () => {
     expect(reconcileProjectSelection(current, afterRememberedHydration)).toEqual(current);
   });
 
+  it("keeps an explicit no-project selection when projects hydrate", () => {
+    const remembered = project("remembered");
+    const current: ProjectSelection = {
+      contextKey: "host:",
+      projectKey: null,
+      project: null,
+      source: "manual",
+    };
+    const afterHydration = context({
+      initialProject: remembered,
+      projects: [remembered],
+      lastActiveProject: remembered,
+    });
+
+    expect(reconcileProjectSelection(current, afterHydration)).toEqual(current);
+  });
+
+  it("resets an explicit no-project selection when the host context changes", () => {
+    const nextProject = project("next", "next-host");
+    const current: ProjectSelection = {
+      contextKey: "host:",
+      projectKey: null,
+      project: null,
+      source: "manual",
+    };
+    const nextContext = context({
+      contextKey: "next-host:",
+      manualContextKey: "next-host:",
+      initialProject: nextProject,
+      projects: [nextProject],
+    });
+
+    expect(reconcileProjectSelection(current, nextContext)).toEqual({
+      contextKey: "next-host:",
+      projectKey: nextProject.projectKey,
+      project: nextProject,
+      source: "initial",
+    });
+  });
+
   it("resets fallback selection when host project capability changes", () => {
     const fallback = project("git-fallback");
     const remembered = project("remembered-directory");

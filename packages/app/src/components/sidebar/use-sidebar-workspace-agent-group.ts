@@ -77,6 +77,7 @@ export function useSidebarWorkspaceAgentGroup(params: {
           cwd: agent.cwd,
           lifecycle: agentPetLifecycle({
             status: agent.status,
+            pendingPermissionCount: agent.pendingPermissions.length,
             attentionReason: agent.attentionReason,
           }),
           lastActivityAtMs: lastActivityAt.getTime(),

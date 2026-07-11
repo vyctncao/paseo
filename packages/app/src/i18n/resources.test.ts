@@ -186,9 +186,7 @@ describe("translation resources", () => {
   });
 
   it("includes composer and agent workflow keys for the Batch 2 migration", () => {
-    expect(en.composer.placeholders.desktop).toBe(
-      "Message the agent, tag @files, or use /commands and /skills",
-    );
+    expect(en.composer.placeholders.desktop).toBe("Describe a task or ask a question");
     expect(en.composer.input.addAttachment).toBe("Add attachment");
     expect(en.composer.input.sendMessage).toBe("Send message");
     expect(en.composer.voice.startDictation).toBe("Start dictation");
@@ -212,6 +210,9 @@ describe("translation resources", () => {
     expect(en.settings.about.releaseChannel.label).toBe("Release channel");
     expect(en.settings.appearance.theme.title).toBe("Theme");
     expect(en.settings.appearance.fonts.interfaceFont).toBe("Interface font");
+    expect(en.settings.pets.addCustom).toBe("Add custom");
+    expect(en.settings.pets.sizeLabel).toBe("Pet size");
+    expect(en.settings.pets.refresh).toBe("Refresh");
     expect(en.settings.shortcuts.actions.rebind).toBe("Rebind");
     expect(en.settings.integrations.commandLine.title).toBe("Command line");
     expect(en.settings.integrations.skills.updateAvailable).toBe("Update available");
@@ -268,6 +269,7 @@ describe("translation resources", () => {
       "Update the host to remove projects.",
     );
     expect(en.newWorkspace.title).toBe("New workspace");
+    expect(en.newWorkspace.projectPicker.noProject).toBe("Don't work in a project");
     expect(en.newWorkspace.refPicker.searchPlaceholder).toBe("Search branches and PRs");
     expect(en.openProject.tiles.addProject.title).toBe("Add a project");
   });

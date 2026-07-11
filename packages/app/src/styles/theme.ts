@@ -107,7 +107,31 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty" | "black";
+export type ThemeName =
+  | "light"
+  | "dark"
+  | "zinc"
+  | "midnight"
+  | "claude"
+  | "ghostty"
+  | "black"
+  | "aurora"
+  | "mesh"
+  | "deep"
+  | "sweep"
+  | "ember";
+
+// Glass themes render a full-viewport gradient scene behind the app shell and use
+// translucent surface tokens so panels read as frosted glass over it. `scene` picks
+// the composition in components/backdrop-scene.tsx; `base` is the solid color under
+// the gradients (also reused wherever glass needs an opaque anchor: terminal
+// background, desktop window-controls overlay).
+export type BackdropSceneId = "aurora" | "mesh" | "deep" | "sweep" | "ember";
+
+export interface ThemeBackdrop {
+  scene: BackdropSceneId;
+  base: string;
+}
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -149,6 +173,7 @@ const lightSemanticColors = {
   surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
   surfaceSidebarHover: "#e9e9ec", // Sidebar hover (darker in light mode)
   surfaceWorkspace: "#ffffff", // Workspace main background
+  surfaceOverlay: "#fafafa", // Floating chrome (dropdowns, sheets) — matches surface1
 
   // Text
   foreground: "#1a1a1e",
@@ -233,6 +258,13 @@ interface DarkThemeConfig {
   // Defaults to `surface1`. Override when the workspace pane must match the app
   // background rather than sit one step above it.
   surfaceWorkspace?: string;
+  // Defaults to `surface1`. Floating chrome that stacks over arbitrary content
+  // (dropdowns, context menus, modal sheets). Glass themes keep surface1 translucent
+  // and point this at an opaque color so overlays stay readable.
+  surfaceOverlay?: string;
+  // Defaults to `surface0`. An always-opaque anchor for spots that cannot tolerate a
+  // translucent color: terminal background, cursor accent, text on primary buttons.
+  solid?: string;
   // Defaults to the neutral near-white `#fafafa`. Override for a tinted text color.
   foreground?: string;
   foregroundMuted: string;
@@ -264,6 +296,7 @@ const darkTerminalAnsi = {
 
 function buildDarkSemanticColors(tint: DarkThemeConfig) {
   const foreground = tint.foreground ?? "#fafafa";
+  const solid = tint.solid ?? tint.surface0;
   return {
     surface0: tint.surface0,
     surface1: tint.surface1,
@@ -274,6 +307,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surfaceWorkspace ?? tint.surface1,
+    surfaceOverlay: tint.surfaceOverlay ?? tint.surface1,
 
     foreground,
     foregroundMuted: tint.foregroundMuted,
@@ -297,7 +331,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     popover: tint.surface2,
     popoverForeground: foreground,
     primary: foreground,
-    primaryForeground: tint.surface0,
+    primaryForeground: solid,
     secondary: tint.surface2,
     secondaryForeground: foreground,
     muted: tint.surface2,
@@ -310,10 +344,10 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     ...darkStatusColors,
 
     terminal: {
-      background: tint.surface0,
+      background: solid,
       foreground,
       cursor: foreground,
-      cursorAccent: tint.surface0,
+      cursorAccent: solid,
       selectionBackground: "rgba(255, 255, 255, 0.2)",
       selectionForeground: foreground,
       black: tint.surfaceSidebar,
@@ -451,6 +485,103 @@ const blackDarkColors = buildDarkSemanticColors({
   destructive: "#c44a4a", // neutral red, hue 0 — no surface tint to lean against
 });
 
+// ---------------------------------------------------------------------------
+// Glass tint definitions
+// ---------------------------------------------------------------------------
+
+// Surface stack for the themed dark palettes. `surface0` is an OPAQUE per-theme
+// tint: the app background, the sidebar panel, the top bar, and the workspace pane
+// all paint it, so they render one identical color regardless of how many layers
+// stack or where they sit — the flat, uniform look. Elevated surfaces (surface1–4,
+// cards, inputs) are faint white lifts that composite consistently over surface0.
+interface GlassThemeConfig {
+  surface0: string; // OPAQUE app/background tint — the single color the whole UI shares
+  base: string; // scene base + terminal bg + window-controls anchor
+  overlay: string; // opaque floating-chrome surface
+  accent: string;
+  accentBright: string;
+  accentForeground?: string;
+  destructive: string;
+}
+
+function buildGlassSemanticColors(glass: GlassThemeConfig) {
+  return buildDarkSemanticColors({
+    surface0: glass.surface0,
+    surface1: "rgba(255, 255, 255, 0.055)",
+    surface2: "rgba(255, 255, 255, 0.10)",
+    surface3: "rgba(255, 255, 255, 0.16)",
+    surface4: "rgba(255, 255, 255, 0.23)",
+    surfaceDiffEmpty: "rgba(255, 255, 255, 0.035)",
+    // Sidebar/workspace share the app background so nothing reads as a separate shade.
+    surfaceSidebar: glass.surface0,
+    surfaceSidebarHover: "rgba(255, 255, 255, 0.06)",
+    surfaceWorkspace: glass.surface0,
+    surfaceOverlay: glass.overlay,
+    solid: glass.base,
+    foreground: "#f2f5fa",
+    foregroundMuted: "#a9b1c3",
+    scrollbarHandle: "rgba(255, 255, 255, 0.28)",
+    border: "rgba(255, 255, 255, 0.12)",
+    borderAccent: "rgba(255, 255, 255, 0.17)",
+    accent: glass.accent,
+    accentBright: glass.accentBright,
+    accentForeground: glass.accentForeground,
+    destructive: glass.destructive,
+  });
+}
+
+// Aurora — deep indigo-navy
+const auroraGlassColors = buildGlassSemanticColors({
+  surface0: "#0e1120",
+  base: "#07090f",
+  overlay: "#161c2a",
+  accent: "#2dd4bf",
+  accentBright: "#7ce8d8",
+  accentForeground: "#08251f",
+  destructive: "#d9534b",
+});
+
+// Mesh — woven navy/violet
+const meshGlassColors = buildGlassSemanticColors({
+  surface0: "#151a34",
+  base: "#10142b",
+  overlay: "#1b2038",
+  accent: "#a78bfa",
+  accentBright: "#c4b0fc",
+  destructive: "#d65563",
+});
+
+// Deep — quietest near-black blue
+const deepGlassColors = buildGlassSemanticColors({
+  surface0: "#0b0e17",
+  base: "#05060b",
+  overlay: "#141924",
+  accent: "#7eaaeb",
+  accentBright: "#a8c6f2",
+  destructive: "#c94f55",
+});
+
+// Sweep — indigo
+const sweepGlassColors = buildGlassSemanticColors({
+  surface0: "#12163a",
+  base: "#0b1030",
+  overlay: "#191d3d",
+  accent: "#8b7cf6",
+  accentBright: "#b3a8fa",
+  destructive: "#cd5266",
+});
+
+// Ember — warm dark
+const emberGlassColors = buildGlassSemanticColors({
+  surface0: "#17120c",
+  base: "#0a0805",
+  overlay: "#221b12",
+  accent: "#f59e0b",
+  accentBright: "#fbc55a",
+  accentForeground: "#221503",
+  destructive: "#e0523f",
+});
+
 export const SPACING = {
   0: 0,
   1: 4,
@@ -584,9 +715,13 @@ const darkShadow = {
   },
 } as const;
 
-function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColors>) {
+function buildDarkTheme(
+  semanticColors: ReturnType<typeof buildDarkSemanticColors>,
+  backdrop: ThemeBackdrop | null = null,
+) {
   return {
     colorScheme: "dark" as const,
+    backdrop,
     colors: {
       ...semanticColors,
       palette: baseColors,
@@ -603,9 +738,18 @@ export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
 export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
 export const darkBlackTheme = buildDarkTheme(blackDarkColors);
+export const darkAuroraTheme = buildDarkTheme(auroraGlassColors, {
+  scene: "aurora",
+  base: "#07090f",
+});
+export const darkMeshTheme = buildDarkTheme(meshGlassColors, { scene: "mesh", base: "#10142b" });
+export const darkDeepTheme = buildDarkTheme(deepGlassColors, { scene: "deep", base: "#05060b" });
+export const darkSweepTheme = buildDarkTheme(sweepGlassColors, { scene: "sweep", base: "#0b1030" });
+export const darkEmberTheme = buildDarkTheme(emberGlassColors, { scene: "ember", base: "#0a0805" });
 
 export const lightTheme = {
   colorScheme: "light" as const,
+  backdrop: null as ThemeBackdrop | null,
   colors: {
     ...lightSemanticColors,
     palette: baseColors,
@@ -647,7 +791,12 @@ type UnistylesThemeKey =
   | "darkMidnight"
   | "darkClaude"
   | "darkGhostty"
-  | "darkBlack";
+  | "darkBlack"
+  | "darkAurora"
+  | "darkMesh"
+  | "darkDeep"
+  | "darkSweep"
+  | "darkEmber";
 
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
@@ -657,6 +806,29 @@ export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   claude: "darkClaude",
   ghostty: "darkGhostty",
   black: "darkBlack",
+  aurora: "darkAurora",
+  mesh: "darkMesh",
+  deep: "darkDeep",
+  sweep: "darkSweep",
+  ember: "darkEmber",
+};
+
+// Backdrop lookup by user-facing theme name, for React-side consumers (the backdrop
+// scene component reads the persisted theme setting, not the Unistyles runtime:
+// non-color style values don't reliably vary per theme on web).
+export const THEME_BACKDROPS: Record<ThemeName, ThemeBackdrop | null> = {
+  light: null,
+  dark: null,
+  zinc: null,
+  midnight: null,
+  claude: null,
+  ghostty: null,
+  black: null,
+  aurora: darkAuroraTheme.backdrop,
+  mesh: darkMeshTheme.backdrop,
+  deep: darkDeepTheme.backdrop,
+  sweep: darkSweepTheme.backdrop,
+  ember: darkEmberTheme.backdrop,
 };
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
@@ -667,4 +839,9 @@ export const THEME_SWATCHES: Record<ThemeName, string> = {
   claude: "#D97757",
   ghostty: "#8caaee",
   black: "#000000",
+  aurora: "#7C3AED",
+  mesh: "#A78BFA",
+  deep: "#3A4A7A",
+  sweep: "#6D5AE0",
+  ember: "#EA580C",
 };

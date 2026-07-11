@@ -4,6 +4,8 @@ import {
   PET_CELL_WIDTH,
   PET_FRAMES_PER_ROW,
   PET_STATES,
+  petFrameCount,
+  petFrameDurationMs,
   petFrameRect,
   petSpritesheetUrl,
   petStateForLifecycle,
@@ -60,15 +62,32 @@ describe("petFrameRect", () => {
     expect(petFrameRect("waving", 0, 9)).toEqual({ offsetX: 0, offsetY: -3 * PET_CELL_HEIGHT });
   });
 
-  it("wraps the frame counter around the row", () => {
-    expect(petFrameRect("running", PET_FRAMES_PER_ROW, 9)).toEqual(petFrameRect("running", 0, 9));
-    expect(petFrameRect("running", PET_FRAMES_PER_ROW + 3, 9)).toEqual(
-      petFrameRect("running", 3, 9),
+  it("wraps at each state's populated frame count", () => {
+    expect(petFrameRect("running-right", PET_FRAMES_PER_ROW, 9)).toEqual(
+      petFrameRect("running-right", 0, 9),
     );
+    expect(petFrameRect("running", 6, 9)).toEqual(petFrameRect("running", 0, 9));
+    expect(petFrameRect("waving", 5, 9)).toEqual(petFrameRect("waving", 1, 9));
   });
 
   it("falls back to idle when the atlas cannot render the state", () => {
     expect(petFrameRect("review", 0, 4)).toEqual(petFrameRect("idle", 0, 9));
+  });
+});
+
+describe("pet animation timing", () => {
+  it("uses only populated atlas columns", () => {
+    expect(petFrameCount("idle")).toBe(6);
+    expect(petFrameCount("waving")).toBe(4);
+    expect(petFrameCount("jumping")).toBe(5);
+    expect(petFrameCount("running-right")).toBe(PET_FRAMES_PER_ROW);
+  });
+
+  it("uses state-specific frame durations and wraps safely", () => {
+    expect(petFrameDurationMs("idle", 0)).toBe(280);
+    expect(petFrameDurationMs("idle", 5)).toBe(320);
+    expect(petFrameDurationMs("idle", 6)).toBe(280);
+    expect(petFrameDurationMs("waving", -1)).toBe(280);
   });
 });
 

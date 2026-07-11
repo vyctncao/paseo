@@ -1,13 +1,9 @@
 /**
  * Which installed pet represents which agent provider.
  *
- * There is no picker yet, so assignment is derived rather than configured. It must
- * be stable: the same provider gets the same pet across reloads and across clients,
- * or the pet stops being a recognizable stand-in for "my Codex agent". Hashing the
- * provider id into the sorted pet list gives that for free, with no persisted state.
- *
- * An explicit `overrides` map takes precedence, which is where a future settings
- * picker plugs in without changing any caller.
+ * Automatic assignment must be stable: the same provider gets the same pet across
+ * reloads and clients. Hashing the provider id into the sorted pet list gives that
+ * for free. An explicit `overrides` map takes precedence for saved picker choices.
  */
 
 export interface PetAssignmentInput {
@@ -16,6 +12,9 @@ export interface PetAssignmentInput {
   petIds: readonly string[];
   overrides?: Readonly<Record<string, string>>;
 }
+
+/** Stable assignment key for Paseo's one app-wide on-screen companion. */
+export const PASEO_COMPANION_PET_KEY = "paseo-companion";
 
 /** FNV-1a. Small, stable across platforms, and good enough to spread a handful of providers. */
 export function hashProvider(provider: string): number {

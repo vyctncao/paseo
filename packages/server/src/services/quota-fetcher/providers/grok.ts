@@ -7,6 +7,7 @@ import type { ProviderUsage, ProviderUsageBalance } from "../../../server/messag
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
+  ApiOptionalStringSchema,
   balanceToneFromRemaining,
   fetchProviderApi,
   unavailableUsage,
@@ -20,6 +21,12 @@ const GrokUsageResponseSchema = z.object({
           val: ApiNumberSchema.optional(),
         })
         .nullish(),
+      used: z
+        .object({
+          val: ApiNumberSchema.optional(),
+        })
+        .nullish(),
+      billingPeriodEnd: ApiOptionalStringSchema,
     })
     .nullish(),
   usage: z
@@ -29,13 +36,17 @@ const GrokUsageResponseSchema = z.object({
     .nullish(),
 });
 
-const GrokAuthSchema = z.object({
+const GrokAuthEntrySchema = z.object({
   access_token: z.string().optional(),
+  key: z.string().optional(),
 });
+
+const GrokAuthRecordSchema = z.record(z.string(), GrokAuthEntrySchema);
 
 interface GrokQuotaProviderOptions {
   logger: Logger;
   fetch?: ProviderApiFetch;
+  homeDir?: string;
 }
 
 export class GrokQuotaProvider implements ProviderUsageFetcher {
@@ -44,10 +55,12 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
 
   private readonly logger: Logger;
   private readonly fetchApi: ProviderApiFetch;
+  private readonly homeDir?: string;
 
   constructor(options: GrokQuotaProviderOptions) {
     this.logger = options.logger;
     this.fetchApi = options.fetch ?? fetch;
+    this.homeDir = options.homeDir;
   }
 
   async fetchUsage(): Promise<ProviderUsage> {
@@ -75,7 +88,7 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
 
     const resp = GrokUsageResponseSchema.parse(await res.json());
     const monthlyLimit = resp.config?.monthlyLimit?.val ?? null;
-    const creditUsage = resp.usage?.creditUsage ?? null;
+    const creditUsage = resp.config?.used?.val ?? resp.usage?.creditUsage ?? null;
     const balances: ProviderUsageBalance[] = [];
     if (monthlyLimit !== null || creditUsage !== null) {
       const remaining =
@@ -89,6 +102,7 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
         remaining,
         limit: monthlyLimit,
         unit: "credits",
+        resetsAt: resp.config?.billingPeriodEnd ?? null,
         tone: balanceToneFromRemaining(remaining),
       });
     }
@@ -106,11 +120,22 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
   }
 
   private async readGrokToken(): Promise<string | null> {
-    const path = join(homedir(), ".grok", "auth.json");
+    const path = join(this.homeDir ?? homedir(), ".grok", "auth.json");
     if (!existsSync(path)) return null;
     try {
-      const auth = GrokAuthSchema.parse(JSON.parse(await fs.readFile(path, "utf8")));
-      return auth.access_token ?? null;
+      const raw: unknown = JSON.parse(await fs.readFile(path, "utf8"));
+      const directAuth = GrokAuthEntrySchema.parse(raw);
+      const directToken = directAuth.access_token ?? directAuth.key;
+      if (directToken) {
+        return directToken;
+      }
+
+      const auth = GrokAuthRecordSchema.parse(raw);
+      for (const entry of Object.values(auth)) {
+        const token = entry.access_token ?? entry.key;
+        if (token) return token;
+      }
+      return null;
     } catch {
       return null;
     }

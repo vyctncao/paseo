@@ -1791,7 +1791,7 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surface1,
   },
   chromeRow: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
@@ -1818,7 +1818,7 @@ const styles = StyleSheet.create((theme) => ({
   iconButton: {
     width: 28,
     height: 28,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius.lg,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1839,7 +1839,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },

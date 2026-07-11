@@ -887,6 +887,9 @@ export const ptBR: TranslationResources = {
   newWorkspace: {
     title: "Novo workspace",
     create: "Criar",
+    projectPicker: {
+      noProject: "Não trabalhar em um projeto",
+    },
     isolation: {
       local: "Local",
       worktree: "Novo worktree",
@@ -1430,6 +1433,23 @@ export const ptBR: TranslationResources = {
       saveAccessibility: "Salvar comentário de revisão",
     },
   },
+  pet: {
+    name: "Pet",
+    activity: {
+      status: {
+        needsInput: "Precisa de você",
+        blocked: "Bloqueado",
+        ready: "Pronto",
+        running: "Em andamento",
+      },
+      summaryNone: "Nenhum chat ativo",
+      summaryOne: "1 chat ativo",
+      summaryMany: "{{count}} chats ativos",
+      title: "Chats ativos",
+      empty: "Todos os chats estão tranquilos",
+      untitled: "Chat sem título",
+    },
+  },
   settings: {
     title: "Configurações",
     loading: "Carregando configurações...",
@@ -1453,6 +1473,7 @@ export const ptBR: TranslationResources = {
     sections: {
       general: "Geral",
       appearance: "Aparência",
+      pets: "Pets",
       shortcuts: "Atalhos",
       integrations: "Integrações",
       permissions: "Permissões",
@@ -1467,6 +1488,33 @@ export const ptBR: TranslationResources = {
       usage: "Uso",
       terminals: "Terminais",
       host: "Visão geral",
+    },
+    pets: {
+      selected: "Selecionado",
+      select: "Selecionar",
+      currentlyShown: "Exibido agora",
+      selectAccessibility: "Selecionar {{name}}",
+      refresh: "Atualizar",
+      refreshAccessibility: "Atualizar pets",
+      addCustom: "Adicionar personalizado",
+      addCustomAccessibility: "Adicionar um pet personalizado",
+      addCustomErrorTitle: "Não foi possível adicionar o pet",
+      addCustomErrorMessage: "Verifique a pasta do pet e tente novamente.",
+      noHost: "Conecte-se a um host para escolher um pet.",
+      unavailableTransport: "A seleção de pets não está disponível com esta conexão ao host.",
+      loading: "Carregando pets...",
+      unavailable: "Não foi possível carregar os pets deste host.",
+      empty: "Nenhum pet está instalado neste host.",
+      description:
+        "Escolha o companheiro que fica na tela e mantém você por dentro dos chats ativos.",
+      unavailableSelection:
+        "{{selected}} não está disponível aqui, então {{current}} está sendo exibido no lugar.",
+      choose: "Escolher pet",
+      appearance: "Aparência",
+      sizeLabel: "Tamanho do pet",
+      sizeDescription: "Ajuste o tamanho do pet na tela",
+      sizeValue: "{{size}} px",
+      sizeAccessibility: "Tamanho do pet: {{size}} pixels",
     },
     general: {
       title: "Geral",
@@ -1580,6 +1628,11 @@ export const ptBR: TranslationResources = {
           claude: "Claude",
           ghostty: "Ghostty",
           black: "Preto",
+          aurora: "Aurora",
+          mesh: "Malha",
+          deep: "Profundo",
+          sweep: "Diagonal",
+          ember: "Brasa",
           auto: "Sistema",
         },
       },

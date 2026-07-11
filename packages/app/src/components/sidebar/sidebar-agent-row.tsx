@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { AgentPet } from "@/components/pet/agent-pet";
 import type { SidebarAgentRow as SidebarAgentRowModel } from "./sidebar-agent-rows";
@@ -9,6 +9,7 @@ export interface SidebarAgentRowProps {
   /** Spritesheet for the pet assigned to this chat's provider; null when none is installed. */
   petSpritesheetUrl: string | null;
   petRows: number;
+  petAuthorizationHeader?: string | null;
   onPress: (tabId: string) => void;
   onClose?: (tabId: string) => void;
 }
@@ -21,17 +22,26 @@ export function SidebarAgentRowView({
   row,
   petSpritesheetUrl,
   petRows,
+  petAuthorizationHeader,
   onPress,
   onClose,
 }: SidebarAgentRowProps) {
   const handlePress = useCallback(() => onPress(row.tabId), [onPress, row.tabId]);
   const handleClose = useCallback(() => onClose?.(row.tabId), [onClose, row.tabId]);
   const accessibilityState = useMemo(() => ({ selected: row.isActive }), [row.isActive]);
+  const rowStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      row.isActive && styles.rowActive,
+      (pressed || hovered) && styles.rowHovered,
+    ],
+    [row.isActive],
+  );
 
   return (
     <Pressable
       onPress={handlePress}
-      style={row.isActive ? styles.rowActive : styles.row}
+      style={rowStyle}
       accessibilityRole="button"
       accessibilityState={accessibilityState}
       accessibilityLabel={`${row.title}, ${row.folder}`}
@@ -40,9 +50,6 @@ export function SidebarAgentRowView({
       <View style={styles.text}>
         <Text numberOfLines={1} style={styles.title}>
           {row.title}
-        </Text>
-        <Text numberOfLines={1} style={styles.folder}>
-          {row.folder}
         </Text>
       </View>
 
@@ -53,6 +60,7 @@ export function SidebarAgentRowView({
             rows={petRows}
             lifecycle={row.lifecycle}
             size={20}
+            authorizationHeader={petAuthorizationHeader}
             accessibilityLabel={`${row.title} is ${row.lifecycle}`}
           />
         ) : null}
@@ -74,20 +82,18 @@ export function SidebarAgentRowView({
 
 const styles = StyleSheet.create((theme) => ({
   row: {
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 10,
   },
   rowActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  rowHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   text: {
@@ -98,10 +104,9 @@ const styles = StyleSheet.create((theme) => ({
   title: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-  },
-  folder: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.ui,
+    fontWeight: theme.fontWeight.normal,
+    lineHeight: 20,
   },
   tools: {
     flexDirection: "row",

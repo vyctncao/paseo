@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       setBadgeCount: (count?: number) => ipcRenderer.invoke("paseo:window:setBadgeCount", count),
     }),
   },
+  pet: {
+    updateState: (state: Record<string, unknown>) =>
+      ipcRenderer.invoke("paseo:pet:update-state", state),
+    importFromDirectory: () => ipcRenderer.invoke("paseo:pet:import"),
+    mainRendererReady: () => ipcRenderer.invoke("paseo:pet:main-renderer-ready"),
+  },
   dialog: {
     ask: (message: string, options?: Record<string, unknown>) =>
       ipcRenderer.invoke("paseo:dialog:ask", message, options),

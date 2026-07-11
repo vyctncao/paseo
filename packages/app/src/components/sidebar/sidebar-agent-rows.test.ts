@@ -81,6 +81,29 @@ describe("buildSidebarWorkspaceGroup", () => {
     expect(group.rows.find((row) => row.tabId === "a")?.isActive).toBe(false);
   });
 
+  it("omits a lone chat because the workspace row already opens it", () => {
+    const group = buildSidebarWorkspaceGroup({
+      workspace: { ...workspace, agents: [agent("only")] },
+      activeTabId: "only",
+      collapsedWorkspaceIds: new Set(),
+    });
+
+    expect(group.rows).toEqual([]);
+    expect(group.agentCount).toBe(1);
+  });
+
+  it("keeps a lone chat visible when chats render directly beneath a project", () => {
+    const group = buildSidebarWorkspaceGroup({
+      workspace: { ...workspace, agents: [agent("remaining")] },
+      activeTabId: "remaining",
+      collapsedWorkspaceIds: new Set(),
+      showLoneChat: true,
+    });
+
+    expect(group.rows.map((row) => row.tabId)).toEqual(["remaining"]);
+    expect(group.rows[0]?.isActive).toBe(true);
+  });
+
   it("sorts newer chats first, breaking ties by tabId", () => {
     const group = buildSidebarWorkspaceGroup({
       workspace: {

@@ -165,6 +165,23 @@ test("creates a distinct local checkout workspace for the same cwd on every call
   expect(deps.workspaces.size).toBe(2);
 });
 
+test("keeps an explicitly assigned project identity for a standalone task", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps();
+
+  const workspace = await createLocalCheckoutWorkspace(
+    { cwd: repoDir, projectId: "paseo:standalone-tasks" },
+    deps,
+  );
+
+  expect(workspace.projectId).toBe("paseo:standalone-tasks");
+  expect(deps.projects.get("paseo:standalone-tasks")).toMatchObject({
+    projectId: "paseo:standalone-tasks",
+    rootPath: repoDir,
+  });
+});
+
 test("renames an eligible unnamed branch-off worktree once on first agent context", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);

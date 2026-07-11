@@ -281,18 +281,33 @@ export interface CreateLocalCheckoutWorkspaceDeps {
 // Never reuses a same-cwd record: a directory may back any number of
 // workspaces. Used by explicit user creation.
 export async function createLocalCheckoutWorkspace(
-  options: { cwd: string; title?: string | null },
+  options: { cwd: string; title?: string | null; projectId?: string },
   deps: CreateLocalCheckoutWorkspaceDeps,
 ): Promise<PersistedWorkspaceRecord> {
   const normalizedCwd = resolve(options.cwd);
   const checkout = await deps.workspaceGitService.getCheckout(normalizedCwd);
   const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
   const now = new Date().toISOString();
-  const projectRecord = await resolveProjectRecordForMembership({
-    membership,
-    timestamp: now,
-    projectRegistry: deps.projectRegistry,
-  });
+  const explicitProjectId = options.projectId?.trim();
+  const existingExplicitProject = explicitProjectId
+    ? await deps.projectRegistry.get(explicitProjectId)
+    : null;
+  const projectRecord = explicitProjectId
+    ? createPersistedProjectRecord({
+        projectId: explicitProjectId,
+        rootPath: normalizedCwd,
+        kind: membership.projectKind,
+        displayName: existingExplicitProject?.displayName ?? membership.projectName,
+        customName: existingExplicitProject?.customName,
+        createdAt: existingExplicitProject?.createdAt ?? now,
+        updatedAt: now,
+        archivedAt: null,
+      })
+    : await resolveProjectRecordForMembership({
+        membership,
+        timestamp: now,
+        projectRegistry: deps.projectRegistry,
+      });
   await deps.projectRegistry.upsert(projectRecord);
 
   const trimmedTitle = options.title?.trim();
@@ -315,6 +330,30 @@ export async function createLocalCheckoutWorkspace(
   });
   await deps.workspaceRegistry.upsert(workspace);
   return workspace;
+}
+
+/**
+ * Reuse the existing non-archived workspace on `cwd`, or create one if there is none.
+ *
+ * The "ensure" counterpart to `createLocalCheckoutWorkspace`. Explicit user creation
+ * always mints a fresh record — a directory may back several workspaces on purpose.
+ * Every *implicit* trigger (external CLI session import, session autosync, loops, agent
+ * tools) instead wants the directory's existing workspace, so repeated triggers on the
+ * same checkout don't pile up duplicate records. `created` lets the caller run
+ * first-agent-only work (auto-naming) without renaming a workspace that already exists.
+ */
+export async function ensureLocalCheckoutWorkspace(
+  options: { cwd: string; title?: string | null },
+  deps: CreateLocalCheckoutWorkspaceDeps,
+): Promise<{ workspace: PersistedWorkspaceRecord; created: boolean }> {
+  const resolvedCwd = resolve(options.cwd);
+  const existing = (await deps.workspaceRegistry.list()).find(
+    (workspace) => !workspace.archivedAt && resolve(workspace.cwd) === resolvedCwd,
+  );
+  if (existing) {
+    return { workspace: existing, created: false };
+  }
+  return { workspace: await createLocalCheckoutWorkspace(options, deps), created: true };
 }
 
 async function resolveProjectRecordForMembership(options: {

@@ -17,3 +17,26 @@ export function projectIconPlaceholderLabelFromDisplayName(displayName: string):
   const segments = trimmedDisplayName.split("/").filter(Boolean);
   return segments[segments.length - 1] || trimmedDisplayName;
 }
+
+/**
+ * Returns the folder name shown for a project in the sidebar.
+ *
+ * Project display names can intentionally include an owner (for example,
+ * `getpaseo/paseo`). The sidebar mirrors Codex by preferring the checked-out
+ * folder name while keeping that richer display name available elsewhere.
+ */
+export function sidebarProjectFolderName(
+  projectRootPath: string | null | undefined,
+  fallbackDisplayName: string,
+): string {
+  const pathSegments = (projectRootPath?.trim() ?? "").split(/[\\/]/).filter(Boolean);
+  const pathBasename = pathSegments[pathSegments.length - 1];
+
+  if (pathBasename && !/^[A-Za-z]:$/.test(pathBasename)) {
+    return pathBasename;
+  }
+
+  const trimmedFallback = fallbackDisplayName.trim();
+  const fallbackSegments = trimmedFallback.split(/[\\/]/).filter(Boolean);
+  return fallbackSegments[fallbackSegments.length - 1] || fallbackDisplayName;
+}

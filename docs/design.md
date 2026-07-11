@@ -116,6 +116,19 @@ Rows have generous vertical padding: roughly 16px of content plus 16px of vertic
 
 The whitespace is the design.
 
+The project sidebar follows the same hierarchy as Codex: a project with one
+workspace lists its chats directly beneath the project row. Workspace rows appear
+only when a project has multiple workspaces and the branch, host, or archive owner
+needs to be disambiguated. Do not render a project and its sole same-named workspace
+as two consecutive labels. Project rows use the checked-out folder basename (not a
+remote owner/repository label), a quiet outline folder icon, 14px system text, and
+the same compact 30px row rhythm as chat rows.
+
+On desktop, the sidebar owns the single sidebar toggle. On macOS, that toggle and
+global search share the traffic-light titlebar band and begin immediately after the
+window controls. Content headers must not render a second desktop sidebar toggle;
+they keep the control only on compact/mobile layouts.
+
 ---
 
 ## 8. Responsiveness
@@ -231,6 +244,7 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | List+detail (compact stack, desktop sidebar+pane)   | `packages/app/src/screens/settings-screen.tsx`, `packages/app/src/screens/projects-screen.tsx`                                                                                                                                                                                                           |
 | Detail card+row                                     | `packages/app/src/screens/settings/host-page.tsx`, `packages/app/src/screens/settings/providers-section.tsx`                                                                                                                                                                                             |
+| Companion catalog + size control                    | `packages/app/src/screens/settings/pets/pets-section.tsx`, `packages/app/src/components/ui/slider.tsx`                                                                                                                                                                                                   |
 | Section grouping inside a card list                 | `packages/app/src/screens/settings/settings-section.tsx`                                                                                                                                                                                                                                                 |
 | Form modal (label + input fields, primary + cancel) | `packages/app/src/components/add-host-modal.tsx`, `packages/app/src/components/pair-link-modal.tsx`, `packages/app/src/components/project-picker-modal.tsx`                                                                                                                                              |
 | Destructive confirmation                            | `confirmDialog` invoked from `packages/app/src/screens/settings/host-page.tsx:541-547`                                                                                                                                                                                                                   |

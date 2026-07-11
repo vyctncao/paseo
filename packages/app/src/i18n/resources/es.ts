@@ -896,6 +896,9 @@ export const es: TranslationResources = {
   newWorkspace: {
     title: "Nuevo espacio de trabajo",
     create: "Crear",
+    projectPicker: {
+      noProject: "No trabajar en un proyecto",
+    },
     isolation: {
       local: "Local",
       worktree: "Nuevo worktree",
@@ -1444,6 +1447,23 @@ export const es: TranslationResources = {
       saveAccessibility: "Guardar comentario de revisión",
     },
   },
+  pet: {
+    name: "Mascota",
+    activity: {
+      status: {
+        needsInput: "Te necesita",
+        blocked: "Bloqueado",
+        ready: "Listo",
+        running: "En curso",
+      },
+      summaryNone: "No hay chats activos",
+      summaryOne: "1 chat activo",
+      summaryMany: "{{count}} chats activos",
+      title: "Chats activos",
+      empty: "Todos los chats están tranquilos",
+      untitled: "Chat sin título",
+    },
+  },
   settings: {
     title: "Ajustes",
     loading: "Cargando configuración...",
@@ -1467,6 +1487,7 @@ export const es: TranslationResources = {
     sections: {
       general: "General",
       appearance: "Apariencia",
+      pets: "Mascotas",
       shortcuts: "Atajos",
       integrations: "Integraciones",
       permissions: "Permisos",
@@ -1481,6 +1502,34 @@ export const es: TranslationResources = {
       usage: "Uso",
       terminals: "Terminals",
       host: "Resumen",
+    },
+    pets: {
+      selected: "Seleccionada",
+      select: "Seleccionar",
+      currentlyShown: "En pantalla",
+      selectAccessibility: "Seleccionar {{name}}",
+      refresh: "Actualizar",
+      refreshAccessibility: "Actualizar mascotas",
+      addCustom: "Añadir personalizada",
+      addCustomAccessibility: "Añadir una mascota personalizada",
+      addCustomErrorTitle: "No se pudo añadir la mascota",
+      addCustomErrorMessage: "Comprueba la carpeta de la mascota e inténtalo de nuevo.",
+      noHost: "Conéctate a un host para elegir una mascota.",
+      unavailableTransport:
+        "La selección de mascotas no está disponible con esta conexión al host.",
+      loading: "Cargando mascotas...",
+      unavailable: "No se pudieron cargar las mascotas desde este host.",
+      empty: "No hay mascotas instaladas en este host.",
+      description:
+        "Elige el compañero que permanece en pantalla y te informa sobre los chats activos.",
+      unavailableSelection:
+        "{{selected}} no está disponible aquí, así que se muestra {{current}} en su lugar.",
+      choose: "Elegir mascota",
+      appearance: "Apariencia",
+      sizeLabel: "Tamaño de la mascota",
+      sizeDescription: "Ajusta el tamaño de la mascota en pantalla",
+      sizeValue: "{{size}} px",
+      sizeAccessibility: "Tamaño de la mascota: {{size}} píxeles",
     },
     general: {
       title: "General",
@@ -1595,6 +1644,11 @@ export const es: TranslationResources = {
           claude: "claudio",
           ghostty: "fantasmal",
           black: "Negro",
+          aurora: "Aurora",
+          mesh: "Malla",
+          deep: "Profundo",
+          sweep: "Diagonal",
+          ember: "Brasa",
           auto: "Sistema",
         },
       },

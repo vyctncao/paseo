@@ -32,6 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
+import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -787,7 +788,7 @@ function MobileSidebar({
                 variant="compact"
               />
             </View>
-            <WorkspacesSectionHeader />
+            <ProjectsSectionHeader showSearch />
             <Pressable
               style={styles.mobileCloseButton}
               onPress={closeSidebar}
@@ -839,6 +840,86 @@ function MobileSidebar({
           </View>
         </Animated.View>
       </GestureDetector>
+    </View>
+  );
+}
+
+/**
+ * Collapse and search, sitting in the titlebar immediately right of the macOS
+ * traffic lights.
+ */
+function SidebarChromeRow({ controlsPadding }: { controlsPadding: WindowControlsPadding }) {
+  const { theme } = useUnistyles();
+  const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
+  const commandCenterKeys = useShortcutKeys("toggle-command-center");
+  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
+  const searchButtonStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.workspacesHeaderIconButton,
+      (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
+    ],
+    [],
+  );
+  const rowStyle = useMemo(
+    () => [
+      styles.sidebarChromeRow,
+      {
+        minHeight: Math.max(32, controlsPadding.top),
+        paddingLeft: controlsPadding.left,
+      },
+    ],
+    [controlsPadding.left, controlsPadding.top],
+  );
+
+  return (
+    <View style={rowStyle}>
+      <SidebarMenuToggle tooltipSide="bottom" />
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open command center"
+            testID="sidebar-command-center-search"
+            style={searchButtonStyle}
+            onPress={handleSearchPress}
+          >
+            {({ hovered, pressed }) => (
+              <Search
+                size={16}
+                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
+}
+
+/**
+ * The only on-screen way back once the sidebar is collapsed — the toggle lives inside it.
+ * Floats over the workspace pane rather than reserving a rail, and takes the `header`
+ * window-controls padding so it clears the traffic lights, which sit here when closed.
+ */
+function CollapsedSidebarToggle() {
+  const padding = useWindowControlsPadding("sidebar");
+  const style = useMemo(
+    () => [
+      styles.collapsedToggle,
+      {
+        top: Math.max(0, (padding.top - 32) / 2),
+        left: padding.left,
+      },
+    ],
+    [padding.left, padding.top],
+  );
+
+  return (
+    <View style={style} pointerEvents="box-none">
+      <SidebarMenuToggle tooltipSide="right" testID="sidebar-collapsed-toggle" />
     </View>
   );
 }
@@ -911,7 +992,6 @@ function DesktopSidebar({
     width: resizeWidth.value,
   }));
 
-  const paddingTopSpacerStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
   const desktopSidebarStyle = useMemo(
     () => [staticStyles.desktopSidebar, resizeAnimatedStyle],
     [resizeAnimatedStyle],
@@ -925,8 +1005,11 @@ function DesktopSidebar({
     [],
   );
 
+  // The workspace top bar is gone, so this is the only place the toggle lives. When the
+  // sidebar is collapsed there is nothing left to render it, and the pane behind it has
+  // no chrome — hence the floating affordance, which also clears the traffic lights.
   if (!isOpen) {
-    return null;
+    return <CollapsedSidebarToggle />;
   }
 
   return (
@@ -934,7 +1017,7 @@ function DesktopSidebar({
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
           <TitlebarDragRegion />
-          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+          <SidebarChromeRow controlsPadding={padding} />
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNewWorkspaceHeaderRow
               label={labels.newWorkspace}
@@ -960,7 +1043,7 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader />
+        <ProjectsSectionHeader />
 
         {isInitialLoad ? (
           <SidebarAgentListSkeleton />
@@ -1000,7 +1083,9 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+type WindowControlsPadding = ReturnType<typeof useWindowControlsPadding>;
+
+function ProjectsSectionHeader({ showSearch = false }: { showSearch?: boolean }) {
   const { theme } = useUnistyles();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
@@ -1014,32 +1099,34 @@ function WorkspacesSectionHeader() {
   );
 
   return (
-    <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
-      <View style={styles.workspacesSectionActions}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open command center"
-              testID="sidebar-command-center-search"
-              style={searchButtonStyle}
-              onPress={handleSearchPress}
-            >
-              {({ hovered, pressed }) => (
-                <Search
-                  size={14}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
-          </TooltipContent>
-        </Tooltip>
+    <View style={styles.projectsSectionHeader}>
+      <Text style={styles.projectsSectionTitle}>Projects</Text>
+      <View style={styles.projectsSectionActions}>
+        {showSearch ? (
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open command center"
+                testID="sidebar-command-center-search"
+                style={searchButtonStyle}
+                onPress={handleSearchPress}
+              >
+                {({ hovered, pressed }) => (
+                  <Search
+                    size={14}
+                    color={
+                      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                    }
+                  />
+                )}
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <View>
@@ -1076,17 +1163,25 @@ const staticStyles = RNStyleSheet.create({
 });
 
 const styles = StyleSheet.create((theme) => ({
+  // Collapse + search, packed left so they read as a continuation of the traffic lights.
+  sidebarChromeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingRight: theme.spacing[2],
+  },
+  collapsedToggle: {
+    position: "absolute",
+    zIndex: 10,
+  },
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
     gap: 2,
-    // Distance from History's bottom edge to the divider. WorkspacesSectionHeader
-    // uses a slightly smaller paddingTop to balance the action buttons' centering
-    // offset so the divider reads as visually centered between the two.
-    paddingBottom: theme.spacing[1.5],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    // Minimal aesthetic: no divider under History — spacing alone separates the
+    // header group from the Projects section.
+    paddingBottom: theme.spacing[2],
   },
-  workspacesSectionHeader: {
+  projectsSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1103,12 +1198,18 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[1],
   },
-  workspacesSectionTitle: {
+  // Uppercase, letterspaced section label — the one treatment across all themes.
+  projectsSectionTitle: {
     color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
+    fontWeight: theme.fontWeight.semibold,
+    letterSpacing: 1,
+    lineHeight: 20,
+    textTransform: "uppercase",
+    opacity: 0.75,
   },
-  workspacesSectionActions: {
+  projectsSectionActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
@@ -1139,10 +1240,23 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surfaceSidebar,
   },
+  // The sidebar is a floating inset panel on every page and every theme — only
+  // the token colors change between themes. 22px radius and the 12px inset are
+  // deliberate one-off chrome values, not part of the shared ramps. No right
+  // divider: the panel is defined by its own border, and the surrounding inset
+  // shows the app background so the sidebar reads as the same surface as the
+  // content it floats over.
   desktopSidebarBorder: {
-    borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceSidebar,
+    margin: theme.spacing[3],
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: theme.colors.borderAccent,
+    // The panel fill is the app background (surface0) — the same token the main
+    // content pane paints — so the sidebar and page read as one continuous
+    // surface in every theme, separated only by the panel's border.
+    backgroundColor: theme.colors.surface0,
+    overflow: "hidden",
+    ...theme.shadow.lg,
   },
   resizeHandle: {
     position: "absolute",
@@ -1161,8 +1275,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-start",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
   },
   footerIconRow: {
     flexDirection: "row",

@@ -7,6 +7,11 @@ import {
   darkClaudeTheme,
   darkGhosttyTheme,
   darkBlackTheme,
+  darkAuroraTheme,
+  darkMeshTheme,
+  darkDeepTheme,
+  darkSweepTheme,
+  darkEmberTheme,
 } from "./theme";
 
 StyleSheet.configure({
@@ -18,6 +23,11 @@ StyleSheet.configure({
     darkClaude: darkClaudeTheme,
     darkGhostty: darkGhosttyTheme,
     darkBlack: darkBlackTheme,
+    darkAurora: darkAuroraTheme,
+    darkMesh: darkMeshTheme,
+    darkDeep: darkDeepTheme,
+    darkSweep: darkSweepTheme,
+    darkEmber: darkEmberTheme,
   },
   breakpoints: {
     xs: 0,
@@ -40,6 +50,11 @@ interface AppThemes {
   darkClaude: typeof darkClaudeTheme;
   darkGhostty: typeof darkGhosttyTheme;
   darkBlack: typeof darkBlackTheme;
+  darkAurora: typeof darkAuroraTheme;
+  darkMesh: typeof darkMeshTheme;
+  darkDeep: typeof darkDeepTheme;
+  darkSweep: typeof darkSweepTheme;
+  darkEmber: typeof darkEmberTheme;
 }
 
 interface AppBreakpoints {

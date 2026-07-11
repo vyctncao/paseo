@@ -895,6 +895,9 @@ export const fr: TranslationResources = {
   newWorkspace: {
     title: "Nouvel espace de travail",
     create: "Créer",
+    projectPicker: {
+      noProject: "Ne pas travailler dans un projet",
+    },
     isolation: {
       local: "Local",
       worktree: "Nouveau worktree",
@@ -1447,6 +1450,23 @@ export const fr: TranslationResources = {
       saveAccessibility: "Enregistrer le commentaire de l'avis",
     },
   },
+  pet: {
+    name: "Compagnon",
+    activity: {
+      status: {
+        needsInput: "A besoin de vous",
+        blocked: "Bloqué",
+        ready: "Prêt",
+        running: "En cours",
+      },
+      summaryNone: "Aucune discussion active",
+      summaryOne: "1 discussion active",
+      summaryMany: "{{count}} discussions actives",
+      title: "Discussions actives",
+      empty: "Toutes les discussions sont calmes",
+      untitled: "Discussion sans titre",
+    },
+  },
   settings: {
     title: "Paramètres",
     loading: "Chargement des paramètres...",
@@ -1470,6 +1490,7 @@ export const fr: TranslationResources = {
     sections: {
       general: "Général",
       appearance: "Apparence",
+      pets: "Compagnons",
       shortcuts: "Raccourcis",
       integrations: "Intégrations",
       permissions: "Autorisations",
@@ -1484,6 +1505,34 @@ export const fr: TranslationResources = {
       usage: "Utilisation",
       terminals: "Terminals",
       host: "Aperçu",
+    },
+    pets: {
+      selected: "Sélectionné",
+      select: "Sélectionner",
+      currentlyShown: "Affiché actuellement",
+      selectAccessibility: "Sélectionner {{name}}",
+      refresh: "Actualiser",
+      refreshAccessibility: "Actualiser les compagnons",
+      addCustom: "Ajouter le vôtre",
+      addCustomAccessibility: "Ajouter un compagnon personnalisé",
+      addCustomErrorTitle: "Impossible d’ajouter le compagnon",
+      addCustomErrorMessage: "Vérifiez le dossier du compagnon et réessayez.",
+      noHost: "Connectez-vous à un hôte pour choisir un compagnon.",
+      unavailableTransport:
+        "La sélection des compagnons n’est pas disponible avec cette connexion à l’hôte.",
+      loading: "Chargement des compagnons...",
+      unavailable: "Impossible de charger les compagnons depuis cet hôte.",
+      empty: "Aucun compagnon n’est installé sur cet hôte.",
+      description:
+        "Choisissez le compagnon qui reste à l’écran et vous tient au courant des discussions actives.",
+      unavailableSelection:
+        "{{selected}} n’est pas disponible ici, donc {{current}} est affiché à sa place.",
+      choose: "Choisir un compagnon",
+      appearance: "Apparence",
+      sizeLabel: "Taille du compagnon",
+      sizeDescription: "Ajustez la taille du compagnon à l’écran",
+      sizeValue: "{{size}} px",
+      sizeAccessibility: "Taille du compagnon : {{size}} pixels",
     },
     general: {
       title: "Général",
@@ -1598,6 +1647,11 @@ export const fr: TranslationResources = {
           claude: "Claude",
           ghostty: "Fantôme",
           black: "Noir",
+          aurora: "Aurore",
+          mesh: "Maille",
+          deep: "Profond",
+          sweep: "Diagonale",
+          ember: "Braise",
           auto: "Système",
         },
       },

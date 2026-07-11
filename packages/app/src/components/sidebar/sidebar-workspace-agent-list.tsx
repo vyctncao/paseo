@@ -2,7 +2,10 @@ import React, { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useCodexPets } from "@/hooks/use-codex-pets";
-import { useServerHttpBaseUrl } from "@/hooks/use-server-http-base-url";
+import {
+  useServerHttpAuthorizationHeader,
+  useServerHttpBaseUrl,
+} from "@/hooks/use-server-http-base-url";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -21,6 +24,8 @@ export interface SidebarWorkspaceAgentListProps {
   workspaceId: string;
   branch: string | null;
   displayName: string;
+  /** Project-level rows align with the project title; workspace rows stay one level deeper. */
+  nesting?: "project" | "workspace";
 }
 
 /**
@@ -37,11 +42,13 @@ export function SidebarWorkspaceAgentList({
   workspaceId,
   branch,
   displayName,
+  nesting = "workspace",
 }: SidebarWorkspaceAgentListProps) {
   const group = useSidebarWorkspaceAgentGroup({ serverId, workspaceId, branch, displayName });
   const focusTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const baseUrl = useServerHttpBaseUrl(serverId);
-  const { petForProvider } = useCodexPets(baseUrl);
+  const authorizationHeader = useServerHttpAuthorizationHeader(serverId);
+  const { petForProvider } = useCodexPets(baseUrl, authorizationHeader);
 
   const handlePress = useCallback(
     (tabId: string) => {
@@ -58,16 +65,21 @@ export function SidebarWorkspaceAgentList({
       workspace: group.input,
       activeTabId: group.activeTabId,
       collapsedWorkspaceIds: NO_COLLAPSED_IDS,
+      showLoneChat: nesting === "project",
     }).rows;
-  }, [group]);
+  }, [group, nesting]);
+  const listStyle = useMemo(
+    () => [styles.list, nesting === "project" ? styles.projectList : styles.workspaceList],
+    [nesting],
+  );
 
   if (rows.length === 0) return null;
 
   return (
-    <View style={styles.list}>
+    <View style={listStyle}>
       {rows.map((row) => {
-        // A host without Codex installed serves no pets; the row renders without one
-        // rather than reserving space for a placeholder.
+        // An unreachable or older host may serve no pet catalog; the row renders
+        // without one rather than reserving space for a placeholder.
         const pet = petForProvider(group?.providerByTabId[row.tabId] ?? "");
         return (
           <SidebarAgentRowView
@@ -75,6 +87,7 @@ export function SidebarWorkspaceAgentList({
             row={row}
             petSpritesheetUrl={pet?.spritesheetUrl ?? null}
             petRows={pet?.rows ?? 0}
+            petAuthorizationHeader={authorizationHeader}
             onPress={handlePress}
           />
         );
@@ -85,9 +98,15 @@ export function SidebarWorkspaceAgentList({
 
 const styles = StyleSheet.create((theme) => ({
   list: {
-    paddingLeft: theme.spacing[4],
     paddingRight: theme.spacing[1],
-    paddingBottom: theme.spacing[1],
-    gap: theme.spacing[0],
+    paddingTop: 2,
+    paddingBottom: theme.spacing[2],
+    gap: 1,
+  },
+  projectList: {
+    paddingLeft: theme.spacing[6],
+  },
+  workspaceList: {
+    paddingLeft: theme.spacing[4],
   },
 }));

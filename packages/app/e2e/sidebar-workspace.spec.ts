@@ -46,7 +46,7 @@ async function waitForSidebarWorkspace(page: import("@playwright/test").Page, wo
 }
 
 test.describe("Sidebar workspace list", () => {
-  test("project with GitHub remote shows owner/repo name in sidebar", async ({ page }) => {
+  test("project with GitHub remote shows its folder name in sidebar", async ({ page }) => {
     const workspace = await seedWorkspace({
       repoPrefix: "sidebar-remote-",
       repo: { withRemote: true, originUrl: GITHUB_REMOTE_URL },
@@ -54,16 +54,17 @@ test.describe("Sidebar workspace list", () => {
 
     try {
       await gotoAppShell(page);
-      await waitForSidebarProject(page, "test-owner/test-repo");
+      const folderName = path.basename(workspace.repoPath);
+      await waitForSidebarProject(page, folderName);
       await waitForSidebarWorkspace(page, workspace.workspaceId);
 
       const projectRow = page
         .locator('[data-testid^="sidebar-project-row-"]')
-        .filter({ hasText: "test-owner/test-repo" })
+        .filter({ hasText: folderName })
         .first();
 
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
-      await expect(projectRow).not.toContainText(path.basename(workspace.repoPath));
+      await expect(projectRow).not.toContainText("test-owner/test-repo");
     } finally {
       await workspace.cleanup();
     }
@@ -104,7 +105,7 @@ test.describe("Sidebar workspace list", () => {
 
     try {
       await gotoAppShell(page);
-      await waitForSidebarProject(page, "test-owner/test-repo");
+      await waitForSidebarProject(page, path.basename(workspace.repoPath));
       await waitForSidebarWorkspace(page, workspace.workspaceId);
       await openWorkspaceFromSidebar(page, workspace.workspaceId);
 

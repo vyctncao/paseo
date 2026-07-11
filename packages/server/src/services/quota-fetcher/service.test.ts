@@ -9,6 +9,7 @@ import { ClaudeQuotaProvider } from "./providers/claude.js";
 import { CodexQuotaProvider } from "./providers/codex.js";
 import { CopilotQuotaProvider } from "./providers/copilot.js";
 import { CursorQuotaProvider } from "./providers/cursor.js";
+import { GeminiQuotaProvider } from "./providers/gemini.js";
 import { GrokQuotaProvider } from "./providers/grok.js";
 import { KimiQuotaProvider } from "./providers/kimi.js";
 import { MiniMaxQuotaProvider } from "./providers/minimax.js";
@@ -328,6 +329,9 @@ describe("real provider usage fetchers", () => {
       "CURSOR_TOKEN",
       "ZAI_API_KEY",
       "GLM_API_KEY",
+      "GEMINI_API_KEY",
+      "GOOGLE_API_KEY",
+      "GEMINI_CLI_HOME",
       "GROK_API_KEY",
       "GROK_TOKEN",
       "KIMI_TOKEN",
@@ -382,7 +386,7 @@ describe("real provider usage fetchers", () => {
         new CopilotQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new CursorQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new ZaiQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
-        new GrokQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
+        new GrokQuotaProvider({ logger, fetch: fetchThroughTestDouble, homeDir }),
         new KimiQuotaProvider({
           logger,
           fetch: fetchThroughTestDouble,
@@ -742,6 +746,59 @@ describe("real provider usage fetchers", () => {
     });
   });
 
+  it("reads current Grok CLI credentials and billing fields", async () => {
+    const grokDir = join(homeDir, ".grok");
+    mkdirSync(grokDir, { recursive: true });
+    writeFileSync(
+      join(grokDir, "auth.json"),
+      JSON.stringify({
+        "https://auth.x.ai::user-id": {
+          key: "grok_current_token",
+          auth_mode: "web_login",
+        },
+      }),
+    );
+    fetchApi = mockFetch(
+      new Map([
+        [
+          "https://cli-chat-proxy.grok.com/v1/billing",
+          () =>
+            jsonResponse({
+              config: {
+                monthlyLimit: { val: 20_000 },
+                used: { val: 6_473 },
+                billingPeriodEnd: "2026-08-01T00:00:00Z",
+              },
+            }),
+        ],
+      ]),
+    );
+
+    const grok = findProvider(await service().listUsage(), "grok");
+
+    expect(grok).toMatchObject({
+      status: "available",
+      balances: [
+        expect.objectContaining({
+          id: "monthly_credits",
+          used: 6_473,
+          remaining: 13_527,
+          limit: 20_000,
+          resetsAt: "2026-08-01T00:00:00Z",
+        }),
+      ],
+    });
+    expect(fetchApi).toHaveBeenCalledWith(
+      "https://cli-chat-proxy.grok.com/v1/billing",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer grok_current_token",
+          "X-XAI-Token-Auth": "xai-grok-cli",
+        }),
+      }),
+    );
+  });
+
   it("fetches Kimi usage from KIMI_TOKEN", async () => {
     process.env["KIMI_TOKEN"] = "kimi_test_token";
     fetchApi = mockFetch(
@@ -806,6 +863,112 @@ describe("real provider usage fetchers", () => {
         }),
       ],
     });
+  });
+
+  it("refreshes expired Kimi CLI credentials and persists the rotated tokens", async () => {
+    const kimiHome = join(homeDir, ".kimi-code");
+    writeKimiCredentials(kimiHome, "kimi_expired_token");
+    let usageCalls = 0;
+    fetchApi = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (url.toString() === "https://api.kimi.com/coding/v1/usages") {
+        usageCalls += 1;
+        if (usageCalls === 1) return jsonResponse({ error: "unauthorized" }, 401);
+        expect((init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+          "Bearer kimi_refreshed_token",
+        );
+        return jsonResponse({
+          usage: { limit: 100, remaining: 68, resetTime: "2026-07-11T00:00:00Z" },
+        });
+      }
+      if (url.toString() === "https://auth.kimi.com/api/oauth/token") {
+        expect(init?.method).toBe("POST");
+        expect(String(init?.body)).toContain("grant_type=refresh_token");
+        return jsonResponse({
+          access_token: "kimi_refreshed_token",
+          refresh_token: "kimi_rotated_refresh_token",
+          expires_in: 900,
+          scope: "kimi-code",
+          token_type: "Bearer",
+        });
+      }
+      throw new Error(`Unmocked fetch: ${url.toString()}`);
+    }) as unknown as typeof fetch;
+
+    const kimi = findProvider(await service({ kimiHomeDir: homeDir }).listUsage(), "kimi");
+    const saved = JSON.parse(readFileSync(join(kimiHome, "credentials", "kimi-code.json"), "utf8"));
+
+    expect(usageCalls).toBe(2);
+    expect(kimi).toMatchObject({
+      status: "available",
+      windows: [expect.objectContaining({ usedPct: 32, remainingPct: 68 })],
+    });
+    expect(saved).toMatchObject({
+      access_token: "kimi_refreshed_token",
+      refresh_token: "kimi_rotated_refresh_token",
+      expires_in: 900,
+    });
+  });
+
+  it("renders Kimi's detailed rolling limits", async () => {
+    process.env["KIMI_TOKEN"] = "kimi_test_token";
+    fetchApi = mockFetch(
+      new Map([
+        [
+          "https://api.kimi.com/coding/v1/usages",
+          () =>
+            jsonResponse({
+              limits: [
+                {
+                  window: { duration: 300, timeUnit: "MINUTE" },
+                  detail: { limit: 100, used: 12, resetAt: "2026-07-10T20:00:00Z" },
+                },
+              ],
+            }),
+        ],
+      ]),
+    );
+
+    const kimi = findProvider(await service().listUsage(), "kimi");
+
+    expect(kimi.windows).toEqual([
+      expect.objectContaining({
+        id: "coding_limit_0",
+        label: "5h limit",
+        usedPct: 12,
+        remainingPct: 88,
+        resetsAt: "2026-07-10T20:00:00Z",
+      }),
+    ]);
+  });
+
+  it("keeps a configured Gemini API-key account visible with its usage source", async () => {
+    const geminiHome = join(homeDir, ".gemini");
+    mkdirSync(geminiHome, { recursive: true });
+    writeFileSync(
+      join(geminiHome, "settings.json"),
+      JSON.stringify({ security: { auth: { selectedType: "gemini-api-key" } } }),
+    );
+
+    const gemini = await new GeminiQuotaProvider({
+      logger: createLogger(),
+      geminiHome,
+    }).fetchUsage();
+
+    expect(gemini).toMatchObject({
+      providerId: "gemini",
+      status: "available",
+      planLabel: "API key",
+      details: [{ id: "usage_source", label: "Usage", value: "Google AI Studio" }],
+    });
+  });
+
+  it("hides Gemini plan usage when the CLI has no configured authentication", async () => {
+    const gemini = await new GeminiQuotaProvider({
+      logger: createLogger(),
+      geminiHome: join(homeDir, ".gemini"),
+    }).fetchUsage();
+
+    expect(gemini.status).toBe("unavailable");
   });
 
   it("fetches MiniMax usage from MINIMAX_API_KEY against the global endpoint", async () => {

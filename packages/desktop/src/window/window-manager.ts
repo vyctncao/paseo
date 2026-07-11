@@ -79,7 +79,11 @@ export function getMainWindowChromeOptions(input: {
     return {
       titleBarStyle: "hidden",
       titleBarOverlay: true,
-      trafficLightPosition: { x: 16, y: 14 },
+      // The sidebar floats as a 12px-inset panel whose top chrome row is 45px
+      // tall (DESKTOP_TRAFFIC_LIGHT_HEIGHT) and centers the collapse/search icons
+      // at ~y=35. The traffic lights shift in by the inset and down to that same
+      // center so the dots share the row with the icons — matching the mockup.
+      trafficLightPosition: { x: 26, y: 29 },
     };
   }
 

@@ -1,4 +1,8 @@
-import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
+import type {
+  SidebarProjectEntry,
+  SidebarWorkspacePlacement,
+} from "@/hooks/use-sidebar-workspaces-list";
+import { STANDALONE_TASKS_PROJECT_ID } from "@getpaseo/protocol/messages";
 
 export interface SidebarProjectHostTarget {
   serverId: string;
@@ -17,7 +21,27 @@ export interface SidebarProjectSectionRowModel {
 
 export type SidebarProjectRowModel = SidebarProjectSectionRowModel;
 
+export type SidebarProjectChildrenModel =
+  | { kind: "direct_chats"; workspace: SidebarWorkspacePlacement }
+  | { kind: "workspace_rows" };
+
 const EMPTY_MULTIPLICITY_MAP: ReadonlyMap<string, boolean> = new Map();
+
+export function splitStandaloneTasksFromProjects(projects: readonly SidebarProjectEntry[]): {
+  projects: SidebarProjectEntry[];
+  taskWorkspaces: SidebarWorkspacePlacement[];
+} {
+  const visibleProjects: SidebarProjectEntry[] = [];
+  const taskWorkspaces: SidebarWorkspacePlacement[] = [];
+  for (const project of projects) {
+    if (project.projectKey === STANDALONE_TASKS_PROJECT_ID) {
+      taskWorkspaces.push(...project.workspaces);
+    } else {
+      visibleProjects.push(project);
+    }
+  }
+  return { projects: visibleProjects, taskWorkspaces };
+}
 
 function hostTarget(input: {
   serverId: string;
@@ -40,6 +64,18 @@ export function resolveSidebarProjectIconTarget(
     }
   }
   return null;
+}
+
+/**
+ * A project with one workspace has no ambiguity to resolve, so its chats can sit
+ * directly beneath the project like Codex tasks. Multiple workspaces keep their
+ * own rows because branch, host, and archive controls still need a visible owner.
+ */
+export function buildSidebarProjectChildrenModel(
+  project: SidebarProjectEntry,
+): SidebarProjectChildrenModel {
+  const workspace = project.workspaces.length === 1 ? project.workspaces[0] : null;
+  return workspace ? { kind: "direct_chats", workspace } : { kind: "workspace_rows" };
 }
 
 // A project can host a brand-new workspace on a host when that host can create a

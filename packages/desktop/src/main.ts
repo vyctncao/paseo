@@ -37,6 +37,13 @@ import {
   setupDragDropPrevention,
   buildStandardContextMenuItems,
 } from "./window/window-manager.js";
+import {
+  destroyPetWindow,
+  PET_OVERLAY_DOCUMENT,
+  PET_OVERLAY_ROUTE_PATH,
+  registerPetWindowManager,
+} from "./window/pet-window.js";
+import type { DesktopPetActivity } from "./window/pet-window-state.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
 import {
@@ -270,6 +277,28 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
 // in-app "Open in new window" action) land on the right project without
 // racing a global.
 const pendingOpenProjectStore = new PendingOpenProjectStore();
+const mainWindows = new Set<BrowserWindow>();
+const pendingPetActivityByWebContents = new Map<number, DesktopPetActivity>();
+const petReadyWebContentsIds = new Set<number>();
+let mostRecentMainWindow: BrowserWindow | null = null;
+let restoredMainWindowCreation: Promise<BrowserWindow> | null = null;
+
+function isMainWebContents(contents: Electron.WebContents): boolean {
+  const win = BrowserWindow.fromWebContents(contents);
+  return Boolean(win && mainWindows.has(win));
+}
+
+function findMostRecentMainWindow(): BrowserWindow | null {
+  if (mostRecentMainWindow && !mostRecentMainWindow.isDestroyed()) {
+    return mostRecentMainWindow;
+  }
+  const windows = [...mainWindows];
+  for (let index = windows.length - 1; index >= 0; index -= 1) {
+    const win = windows[index];
+    if (win && !win.isDestroyed()) return win;
+  }
+  return null;
+}
 
 if (PASEO_DEBUG) {
   log.info("[open-project] argv:", process.argv);
@@ -576,11 +605,27 @@ async function createWindow(
       webviewTag: true,
     },
   });
+  mainWindows.add(mainWindow);
+  mostRecentMainWindow = mainWindow;
+  mainWindow.on("focus", () => {
+    mostRecentMainWindow = mainWindow;
+  });
 
   const webContentsId = mainWindow.webContents.id;
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
   mainWindow.on("closed", () => {
     pendingOpenProjectStore.delete(webContentsId);
+    pendingPetActivityByWebContents.delete(webContentsId);
+    petReadyWebContentsIds.delete(webContentsId);
+    mainWindows.delete(mainWindow);
+    if (mostRecentMainWindow === mainWindow) {
+      mostRecentMainWindow = null;
+    }
+    // Preserve Paseo's existing close-to-quit behavior on Windows/Linux. On
+    // macOS the companion may remain visible and reopen the app on click.
+    if (mainWindows.size === 0 && process.platform !== "darwin") {
+      destroyPetWindow();
+    }
   });
 
   if (devWorktreeName) {
@@ -687,6 +732,41 @@ async function createWindow(
 
   await mainWindow.loadURL(`${APP_SCHEME}://app/`);
   return mainWindow;
+}
+
+async function ensureRestoredMainWindow(): Promise<BrowserWindow> {
+  const current = findMostRecentMainWindow();
+  if (current) return current;
+  if (restoredMainWindowCreation) return await restoredMainWindowCreation;
+  restoredMainWindowCreation = createWindow({ restoreWindowState: true }).finally(() => {
+    restoredMainWindowCreation = null;
+  });
+  return await restoredMainWindowCreation;
+}
+
+function deliverPetActivity(win: BrowserWindow, activity: DesktopPetActivity): void {
+  const contents = win.webContents;
+  if (petReadyWebContentsIds.has(contents.id)) {
+    contents.send("paseo:event:pet-open-activity", activity);
+    return;
+  }
+  pendingPetActivityByWebContents.set(contents.id, activity);
+}
+
+async function openPetActivity(activity: DesktopPetActivity): Promise<void> {
+  const win = await ensureRestoredMainWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  deliverPetActivity(win, activity);
+}
+
+function handlePetMainRendererReady(contents: Electron.WebContents): void {
+  petReadyWebContentsIds.add(contents.id);
+  const activity = pendingPetActivityByWebContents.get(contents.id);
+  if (!activity) return;
+  pendingPetActivityByWebContents.delete(contents.id);
+  contents.send("paseo:event:pet-open-activity", activity);
 }
 
 // ---------------------------------------------------------------------------
@@ -812,6 +892,12 @@ async function bootstrap(): Promise<void> {
     const { pathname, search, hash } = new URL(request.url);
     const decodedPath = decodeURIComponent(pathname);
 
+    if (decodedPath === PET_OVERLAY_ROUTE_PATH) {
+      return new Response(PET_OVERLAY_DOCUMENT, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
     // Chromium can occasionally request the exported entrypoint directly.
     // Canonicalize it back to the route URL so Expo Router sees `/`, not `/index.html`.
     if (decodedPath.endsWith("/index.html")) {
@@ -848,6 +934,11 @@ async function bootstrap(): Promise<void> {
   }
   registerDaemonManager();
   registerWindowManager();
+  registerPetWindowManager({
+    isMainWebContents,
+    onOpenActivity: openPetActivity,
+    onMainRendererReady: handlePetMainRendererReady,
+  });
   registerDialogHandlers();
   registerNotificationHandlers();
   registerOpenerHandlers();
@@ -875,8 +966,8 @@ async function bootstrap(): Promise<void> {
   resolveBootstrapComplete();
 
   app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await createWindow({ restoreWindowState: true });
+    if (mainWindows.size === 0) {
+      await ensureRestoredMainWindow();
     }
   });
 }
@@ -898,7 +989,7 @@ void runDesktopStartup({
 });
 
 function showDaemonShutdownDialog(): void {
-  for (const win of BrowserWindow.getAllWindows()) {
+  for (const win of mainWindows) {
     win.webContents.send("paseo:event:quitting", {});
   }
 }

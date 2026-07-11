@@ -110,11 +110,13 @@ export interface MessageInputProps {
   disabled?: boolean;
   /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
   isPaneFocused?: boolean;
-  /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
+  /** Model and provider controls rendered at the trailing edge of the composer toolbar. */
   leftContent?: React.ReactNode;
-  /** Content to render on the right side before the voice button (e.g., context window meter) */
+  /** Permission/mode control rendered at the leading edge of the composer toolbar. */
+  modeContent?: React.ReactNode;
+  /** Content rendered between the agent controls and runtime controls (e.g., context meter). */
   beforeVoiceContent?: React.ReactNode;
-  /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
+  /** Runtime controls rendered at the far right (e.g., realtime voice or cancel). */
   rightContent?: React.ReactNode;
   voiceServerId?: string;
   voiceAgentId?: string;
@@ -151,7 +153,7 @@ export interface MessageInputRef {
 }
 
 const MIN_INPUT_HEIGHT_MOBILE = 30;
-const MIN_INPUT_HEIGHT_DESKTOP = 46;
+const MIN_INPUT_HEIGHT_DESKTOP = 30;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
 const MIN_INPUT_HEIGHT = isWeb ? MIN_INPUT_HEIGHT_DESKTOP : MIN_INPUT_HEIGHT_MOBILE;
@@ -431,20 +433,23 @@ function SendTooltipBody({
 
 function SendButtonContent({
   isSubmitLoading,
+  isInactive,
   submitIcon,
   buttonIconSize,
 }: {
   isSubmitLoading: boolean;
+  isInactive: boolean;
   submitIcon: "arrow" | "return";
   buttonIconSize: number;
 }) {
   if (isSubmitLoading) {
-    return <ThemedActivityIndicator size="small" uniProps={iconAccentForegroundMapping} />;
+    return <ThemedActivityIndicator size="small" uniProps={iconAccentMapping} />;
   }
+  const iconMapping = isInactive ? iconForegroundMutedMapping : iconAccentMapping;
   if (submitIcon === "return") {
-    return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
+    return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconMapping} />;
   }
-  return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
+  return <ThemedArrowUp size={buttonIconSize} uniProps={iconMapping} />;
 }
 
 interface DesktopKeyPressContext {
@@ -787,6 +792,7 @@ function SendButtonTooltip({
   submitAccessibilityLabel,
   sendButtonCombinedStyle,
   isSubmitLoading,
+  isInactive,
   submitIcon,
   submitButtonTestID,
   buttonIconSize,
@@ -801,6 +807,7 @@ function SendButtonTooltip({
   submitAccessibilityLabel: string;
   sendButtonCombinedStyle: React.ComponentProps<typeof TooltipTrigger>["style"];
   isSubmitLoading: boolean;
+  isInactive: boolean;
   submitIcon: "arrow" | "return";
   submitButtonTestID: string | undefined;
   buttonIconSize: number;
@@ -820,6 +827,7 @@ function SendButtonTooltip({
       >
         <SendButtonContent
           isSubmitLoading={isSubmitLoading}
+          isInactive={isInactive}
           submitIcon={submitIcon}
           buttonIconSize={buttonIconSize}
         />
@@ -1162,6 +1170,7 @@ interface ResolvedMessageInputProps {
   disabled: boolean;
   isPaneFocused: boolean;
   leftContent: React.ReactNode;
+  modeContent: React.ReactNode;
   beforeVoiceContent: React.ReactNode;
   rightContent: React.ReactNode;
   voiceServerId: string | undefined;
@@ -1187,7 +1196,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     allowEmptySubmit: props.allowEmptySubmit ?? false,
     submitButtonAccessibilityLabel: props.submitButtonAccessibilityLabel,
     submitButtonTestID: props.submitButtonTestID,
-    submitIcon: props.submitIcon ?? "arrow",
+    submitIcon: props.submitIcon ?? "return",
     isSubmitDisabled: props.isSubmitDisabled ?? false,
     isSubmitLoading: props.isSubmitLoading ?? false,
     preserveHeightOnSubmit: props.preserveHeightOnSubmit ?? false,
@@ -1204,6 +1213,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     disabled: props.disabled ?? false,
     isPaneFocused: props.isPaneFocused ?? true,
     leftContent: props.leftContent,
+    modeContent: props.modeContent,
     beforeVoiceContent: props.beforeVoiceContent,
     rightContent: props.rightContent,
     voiceServerId: props.voiceServerId,
@@ -1254,6 +1264,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
       isPaneFocused,
       leftContent,
+      modeContent,
       beforeVoiceContent,
       rightContent,
       voiceServerId,
@@ -1777,17 +1788,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       void handleStopRealtimeVoice();
     }, [handleStopRealtimeVoice]);
 
-    const inputWrapperCombinedStyle = useMemo(
-      () => [styles.inputWrapper, inputWrapperStyle, inputAnimatedStyle],
-      [inputWrapperStyle, inputAnimatedStyle],
+    const regularContentStyle = useMemo(
+      () => [styles.regularContent, inputAnimatedStyle],
+      [inputAnimatedStyle],
+    );
+    const inputSurfaceStyle = useMemo(
+      () => [styles.inputSurface, inputWrapperStyle],
+      [inputWrapperStyle],
     );
     const textInputStyle = useMemo(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
       [inputHeight, maxInputHeight],
     );
+    const persistentSendButtonDisabled = isSendButtonDisabled || !shouldShowSendButton;
     const sendButtonCombinedStyle = useMemo(
-      () => [styles.sendButton, isSendButtonDisabled && styles.buttonDisabled],
-      [isSendButtonDisabled],
+      () => [
+        styles.sendButton,
+        !shouldShowSendButton && styles.sendButtonInactive,
+        persistentSendButtonDisabled && styles.buttonDisabled,
+      ],
+      [persistentSendButtonDisabled, shouldShowSendButton],
     );
     const overlayContainerStyle = useMemo(
       () => [styles.overlayContainer, overlayAnimatedStyle],
@@ -1820,42 +1840,65 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     return (
       <View ref={rootRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
-        <Animated.View ref={inputWrapperRef} style={inputWrapperCombinedStyle}>
-          {attachmentSlot}
-          {/* Text input */}
-          <View style={styles.textInputScrollWrapper}>
-            <ThemedTextInput
-              ref={textInputRef}
-              value={value}
-              onChangeText={handleInputChange}
-              placeholder={placeholder ?? t("composer.placeholders.fallback")}
-              uniProps={textInputPlaceholderColorMapping}
-              accessibilityLabel={t("composer.input.accessibilityLabel")}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-              style={textInputStyle}
-              multiline
-              scrollEnabled={isWeb ? inputHeight >= maxInputHeight : true}
-              onContentSizeChange={handleContentSizeChange}
-              editable={!isDictating && !isRealtimeVoiceForCurrentAgent && !disabled}
-              onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
-              onSelectionChange={handleSelectionChange}
-              autoFocus={isWeb && autoFocus}
-            />
-            {inputScrollbar}
-            <FocusHint
-              visible={isWeb && isPaneFocused && !isInputFocused && !value}
-              focusInputKeys={focusInputKeys}
-              label={t("composer.input.focusHint", {
-                shortcut: focusInputKeys ? formatShortcut(focusInputKeys[0], getShortcutOs()) : "",
-              })}
-            />
+        <Animated.View ref={inputWrapperRef} style={regularContentStyle}>
+          <View style={inputSurfaceStyle}>
+            {attachmentSlot}
+            <View style={styles.inputRow}>
+              {/* Text input */}
+              <View style={styles.textInputScrollWrapper}>
+                <ThemedTextInput
+                  ref={textInputRef}
+                  value={value}
+                  onChangeText={handleInputChange}
+                  placeholder={placeholder ?? t("composer.placeholders.fallback")}
+                  uniProps={textInputPlaceholderColorMapping}
+                  accessibilityLabel={t("composer.input.accessibilityLabel")}
+                  onFocus={handleInputFocus}
+                  onBlur={handleInputBlur}
+                  style={textInputStyle}
+                  multiline
+                  scrollEnabled={isWeb ? inputHeight >= maxInputHeight : true}
+                  onContentSizeChange={handleContentSizeChange}
+                  editable={!isDictating && !isRealtimeVoiceForCurrentAgent && !disabled}
+                  onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
+                  onSelectionChange={handleSelectionChange}
+                  autoFocus={isWeb && autoFocus}
+                />
+                {inputScrollbar}
+                <FocusHint
+                  visible={isWeb && isPaneFocused && !isInputFocused && !value}
+                  focusInputKeys={focusInputKeys}
+                  label={t("composer.input.focusHint", {
+                    shortcut: focusInputKeys
+                      ? formatShortcut(focusInputKeys[0], getShortcutOs())
+                      : "",
+                  })}
+                />
+              </View>
+              <SendButtonTooltip
+                shouldShow
+                canPressLoadingButton={canPressLoadingButton}
+                onSubmitLoadingPress={onSubmitLoadingPress}
+                onDefaultSendAction={handleDefaultSendAction}
+                isSendButtonDisabled={persistentSendButtonDisabled}
+                submitAccessibilityLabel={submitAccessibilityLabel}
+                sendButtonCombinedStyle={sendButtonCombinedStyle}
+                isSubmitLoading={isSubmitLoading}
+                isInactive={!shouldShowSendButton}
+                submitIcon={submitIcon}
+                submitButtonTestID={submitButtonTestID}
+                buttonIconSize={buttonIconSize}
+                sendKeys={DEFAULT_SEND_KEYS}
+                sendTooltipLabel={sendTooltipLabel}
+              />
+            </View>
           </View>
 
           {/* Button row */}
           <View style={styles.buttonRow}>
-            {/* Toolbar left: attachment button + agent controls */}
+            {/* Toolbar left: permission mode + attachment and voice controls */}
             <View style={styles.leftButtonGroup}>
+              {modeContent}
               <AttachmentDropdown
                 isConnected={isConnected}
                 disabled={disabled}
@@ -1864,12 +1907,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 attachmentMenuItems={attachmentMenuItems}
                 addAttachmentLabel={t("composer.input.addAttachment")}
               />
-              {leftContent}
-            </View>
-
-            {/* Right: voice button, contextual button (realtime/send/cancel) */}
-            <View style={styles.rightButtonGroup}>
-              {beforeVoiceContent}
               <VoiceButtonTooltip
                 onVoicePress={handleVoicePress}
                 isDictationStartEnabled={isDictationStartEnabled}
@@ -1881,22 +1918,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 voiceMuteToggleKeys={voiceMuteToggleKeys}
                 dictationToggleKeys={dictationToggleKeys}
               />
+            </View>
+
+            {/* Right: model, context, and runtime controls */}
+            <View style={styles.rightButtonGroup}>
+              {leftContent}
+              {beforeVoiceContent}
               {rightContent}
-              <SendButtonTooltip
-                shouldShow={shouldShowSendButton}
-                canPressLoadingButton={canPressLoadingButton}
-                onSubmitLoadingPress={onSubmitLoadingPress}
-                onDefaultSendAction={handleDefaultSendAction}
-                isSendButtonDisabled={isSendButtonDisabled}
-                submitAccessibilityLabel={submitAccessibilityLabel}
-                sendButtonCombinedStyle={sendButtonCombinedStyle}
-                isSubmitLoading={isSubmitLoading}
-                submitIcon={submitIcon}
-                submitButtonTestID={submitButtonTestID}
-                buttonIconSize={buttonIconSize}
-                sendKeys={DEFAULT_SEND_KEYS}
-                sendTooltipLabel={sendTooltipLabel}
-              />
             </View>
           </View>
         </Animated.View>
@@ -1929,16 +1957,20 @@ const styles = StyleSheet.create((theme: Theme) => ({
   container: {
     position: "relative",
   },
-  inputWrapper: {
+  regularContent: {
     flexDirection: "column",
-    gap: theme.spacing[3],
+    gap: theme.spacing[2],
+  },
+  inputSurface: {
+    flexDirection: "column",
+    gap: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
-      md: theme.spacing[4],
+      md: theme.spacing[3],
     },
     paddingHorizontal: {
       xs: theme.spacing[3],
@@ -1952,8 +1984,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
         }
       : {}),
   },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: theme.spacing[2],
+  },
   textInputScrollWrapper: {
     position: "relative",
+    flex: 1,
+    minWidth: 0,
   },
   focusHintText: {
     position: "absolute",
@@ -1979,17 +2018,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   buttonRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginHorizontal: -6,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    minHeight: 28,
   },
   leftButtonGroup: {
     minWidth: 0,
-    flexShrink: 1,
-    flexGrow: 1,
+    flexShrink: 0,
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: theme.spacing[0],
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   rightButtonGroup: {
     flexShrink: 0,
@@ -2024,10 +2063,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: 28,
     height: 28,
     borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: theme.spacing[1],
+  },
+  sendButtonInactive: {
+    backgroundColor: "transparent",
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
@@ -2093,7 +2133,7 @@ const ThemedTextInput = withUnistyles(TextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
+const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
 const textInputPlaceholderColorMapping = (theme: Theme) => ({
   placeholderTextColor: theme.colors.surface4,
 });

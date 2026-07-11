@@ -94,6 +94,7 @@ import { createGitHubService } from "../services/github-service.js";
 import {
   createPaseoWorktree as createRegisteredPaseoWorktree,
   createLocalCheckoutWorkspace,
+  ensureLocalCheckoutWorkspace,
 } from "./paseo-worktree-service.js";
 import { createPaseoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
@@ -117,7 +118,15 @@ import {
   SessionAutosyncService,
   type SessionAutosyncSettings,
 } from "./agent/session-autosync-service.js";
-import { listCodexPets, resolvePetSpritesheetPath } from "./pets/codex-pets.js";
+import {
+  getPresetPetSpritesheet,
+  importCodexPet,
+  listCodexPets,
+  PASEO_PRESET_PETS,
+  PET_IMPORT_JSON_LIMIT,
+  PetImportError,
+  resolvePetSpritesheetPath,
+} from "./pets/codex-pets.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -645,6 +654,25 @@ export async function createPaseoDaemon(
     }),
   );
 
+  // Pet atlases are several MiB after base64 encoding. Keep the larger JSON
+  // allowance scoped to this authenticated endpoint; every other API retains
+  // Express's conservative default body limit.
+  app.post("/api/pets/import", express.json({ limit: PET_IMPORT_JSON_LIMIT }), (req, res) => {
+    void (async () => {
+      try {
+        const pet = await importCodexPet(req.body);
+        res.status(201).json({ pet });
+      } catch (error) {
+        if (error instanceof PetImportError) {
+          res.status(error.status).json({ error: error.message });
+          return;
+        }
+        logger.error({ err: error }, "Failed to import custom pet");
+        res.status(500).json({ error: "Unable to import pet" });
+      }
+    })();
+  });
+
   app.use(express.json());
 
   // Serve static files from public directory
@@ -672,9 +700,9 @@ export async function createPaseoDaemon(
       try {
         res.json({ pets: await listCodexPets() });
       } catch (error) {
-        // No pets is normal (Codex may not be installed); never fail the request.
+        // Custom-pet discovery is optional; the original Paseo presets remain.
         logger.warn({ err: error }, "Failed to list Codex pets");
-        res.json({ pets: [] });
+        res.json({ pets: PASEO_PRESET_PETS });
       }
     })();
   });
@@ -682,6 +710,12 @@ export async function createPaseoDaemon(
   app.get("/api/pets/:petId/spritesheet", (req, res) => {
     void (async () => {
       try {
+        const presetSpritesheet = getPresetPetSpritesheet(req.params.petId);
+        if (presetSpritesheet) {
+          res.type("image/svg+xml").setHeader("Cache-Control", "public, max-age=86400, immutable");
+          res.send(presetSpritesheet);
+          return;
+        }
         const spritesheetPath = await resolvePetSpritesheetPath(req.params.petId);
         if (!spritesheetPath) {
           res.status(404).end();
@@ -889,11 +923,18 @@ export async function createPaseoDaemon(
     cwd: string,
     firstAgentContext?: FirstAgentContext,
   ): Promise<string> => {
-    const workspace = await createLocalCheckoutWorkspace(
+    // "Ensure", not "create": reuse the directory's existing workspace when one is
+    // there. Without this, every external trigger — CLI session import, session
+    // autosync, loops, agent tools — minted a duplicate workspace for the same
+    // checkout; two near-simultaneous imports left two identical `staging` records
+    // seconds apart. Explicit user creation still mints fresh (createLocalCheckoutWorkspace).
+    const { workspace, created } = await ensureLocalCheckoutWorkspace(
       { cwd, title: resolveFirstAgentPromptTitle(firstAgentContext) },
       { projectRegistry, workspaceRegistry, workspaceGitService },
     );
-    if (firstAgentContext) {
+    // Auto-naming is a first-agent concern: only name a freshly created workspace, never
+    // rename an existing one from a later agent's prompt.
+    if (created && firstAgentContext) {
       workspaceAutoName.scheduleForDirectory({
         workspaceId: workspace.workspaceId,
         cwd: workspace.cwd,

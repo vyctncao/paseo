@@ -5,10 +5,14 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_PET_SIZE,
   DEFAULT_UI_FONT_SIZE,
+  MAX_PET_SIZE,
+  MIN_PET_SIZE,
   loadAppSettingsFromStorage,
   loadSettingsFromStorage,
   parseClampedFontSize,
+  parsePetSize,
   parseTerminalScrollbackLines,
   saveAppSettings,
   type SettingsDeps,
@@ -67,6 +71,68 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.workspaceTitleSource).toBe("title");
+  });
+
+  it("defaults the selected pet to the host fallback when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.selectedPetId).toBeNull();
+  });
+
+  it("loads a persisted pet selection", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ selectedPetId: "  mofu  " }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.selectedPetId).toBe("mofu");
+  });
+
+  it("drops an invalid pet selection back to the host fallback", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ selectedPetId: "   " }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.selectedPetId).toBeNull();
+  });
+
+  it("defaults the pet size when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.petSize).toBe(DEFAULT_PET_SIZE);
+  });
+
+  it("loads and clamps a persisted pet size", async () => {
+    const large = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ petSize: 999 }),
+      }),
+    });
+    const small = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ petSize: 12 }),
+      }),
+    });
+    const invalid = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ petSize: "huge" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(large)).petSize).toBe(MAX_PET_SIZE);
+    expect((await loadAppSettingsFromStorage(small)).petSize).toBe(MIN_PET_SIZE);
+    expect((await loadAppSettingsFromStorage(invalid)).petSize).toBe(DEFAULT_PET_SIZE);
   });
 
   it("loads configured terminal scrollback lines from app settings", async () => {
@@ -282,6 +348,44 @@ describe("saveAppSettings", () => {
       }),
     );
   });
+
+  it("saves the selected pet through app settings persistence", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+      }),
+    });
+    const queryClient = new QueryClient();
+
+    await saveAppSettings({
+      queryClient,
+      updates: { selectedPetId: "nova" },
+      deps,
+    });
+
+    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
+      JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, selectedPetId: "nova" }),
+    );
+  });
+
+  it("saves the pet size through app settings persistence", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+      }),
+    });
+    const queryClient = new QueryClient();
+
+    await saveAppSettings({
+      queryClient,
+      updates: { petSize: 160 },
+      deps,
+    });
+
+    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
+      JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, petSize: 160 }),
+    );
+  });
 });
 
 describe("parseTerminalScrollbackLines", () => {
@@ -431,5 +535,14 @@ describe("parseClampedFontSize", () => {
     expect(parseClampedFontSize(8, { min: 11, max: 24 })).toBe(11);
     expect(parseClampedFontSize("15", { min: 11, max: 24 })).toBe(15);
     expect(parseClampedFontSize("abc", { min: 11, max: 24 })).toBeNull();
+  });
+});
+
+describe("parsePetSize", () => {
+  it("clamps into the supported pet size range and rejects invalid values", () => {
+    expect(parsePetSize(400)).toBe(MAX_PET_SIZE);
+    expect(parsePetSize(40)).toBe(MIN_PET_SIZE);
+    expect(parsePetSize("144")).toBe(144);
+    expect(parsePetSize("large")).toBeNull();
   });
 });

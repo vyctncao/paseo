@@ -16,17 +16,21 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_PET_SIZE,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_PET_SIZE,
   MAX_TERMINAL_SCROLLBACK_LINES,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_PET_SIZE,
   MIN_TERMINAL_SCROLLBACK_LINES,
   MIN_UI_FONT_SIZE,
   loadAppSettingsFromStorage as loadAppSettingsFromStoragePure,
   loadSettingsFromStorage as loadSettingsFromStoragePure,
   parseClampedFontSize,
+  parsePetSize,
   parseTerminalScrollbackLines,
   sanitizeFontFamily,
   saveAppSettings as saveAppSettingsPure,
@@ -43,18 +47,23 @@ import {
 
 export {
   APP_SETTINGS_KEY,
+  APP_SETTINGS_QUERY_KEY,
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_PET_SIZE,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_PET_SIZE,
   MAX_TERMINAL_SCROLLBACK_LINES,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_PET_SIZE,
   MIN_TERMINAL_SCROLLBACK_LINES,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
+  parsePetSize,
   parseTerminalScrollbackLines,
   sanitizeFontFamily,
 };
@@ -185,6 +194,12 @@ export function useSettings<TSelected>(
       }
       if (updates.autoExpandReasoning !== undefined) {
         appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
+      }
+      if (updates.selectedPetId !== undefined) {
+        appUpdates.selectedPetId = updates.selectedPetId;
+      }
+      if (updates.petSize !== undefined) {
+        appUpdates.petSize = updates.petSize;
       }
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {

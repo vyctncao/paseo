@@ -138,6 +138,10 @@ export function resolveProjectSelection(
   return null;
 }
 
+export function isNoProjectSelection(selection: ProjectSelection): boolean {
+  return selection.source === "manual" && resolveProjectSelectionKey(selection) === null;
+}
+
 export function reconcileProjectSelection(
   current: ProjectSelection,
   context: ProjectSelectionContext,
@@ -151,6 +155,10 @@ export function reconcileProjectSelection(
 
   if (shouldResetInitialFallbackSelection(current, context)) {
     return initialSelection;
+  }
+
+  if (isNoProjectSelection(current)) {
+    return current;
   }
 
   const resolvedProject = resolveProjectSelection(current, context);

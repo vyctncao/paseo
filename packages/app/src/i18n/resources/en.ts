@@ -63,7 +63,7 @@ export const en = {
   },
   composer: {
     placeholders: {
-      desktop: "Message the agent, tag @files, or use /commands and /skills",
+      desktop: "Describe a task or ask a question",
       mobile: "Message, @files, /commands",
       fallback: "Message...",
     },
@@ -140,11 +140,11 @@ export const en = {
       select: "Select agent provider",
     },
     thinking: {
-      title: "Thinking",
+      title: "Effort",
       unknown: "Unknown",
       extraHigh: "Extra high",
-      select: "Select thinking option",
-      selectWithValue: "Select thinking option ({{value}})",
+      select: "Select effort level",
+      selectWithValue: "Select effort level ({{value}})",
     },
     model: {
       unknown: "Unknown model",
@@ -876,6 +876,9 @@ export const en = {
   newWorkspace: {
     title: "New workspace",
     create: "Create",
+    projectPicker: {
+      noProject: "Don't work in a project",
+    },
     isolation: {
       local: "Local",
       worktree: "New worktree",
@@ -1413,6 +1416,23 @@ export const en = {
       saveAccessibility: "Save review comment",
     },
   },
+  pet: {
+    name: "Pet",
+    activity: {
+      status: {
+        needsInput: "Needs you",
+        blocked: "Blocked",
+        ready: "Ready",
+        running: "Running",
+      },
+      summaryNone: "No active chats",
+      summaryOne: "1 active chat",
+      summaryMany: "{{count}} active chats",
+      title: "Active chats",
+      empty: "All chats are quiet",
+      untitled: "Untitled chat",
+    },
+  },
   settings: {
     title: "Settings",
     loading: "Loading settings...",
@@ -1436,6 +1456,7 @@ export const en = {
     sections: {
       general: "General",
       appearance: "Appearance",
+      pets: "Pets",
       shortcuts: "Shortcuts",
       integrations: "Integrations",
       permissions: "Permissions",
@@ -1450,6 +1471,33 @@ export const en = {
       usage: "Usage",
       terminals: "Terminals",
       host: "Overview",
+    },
+    pets: {
+      selected: "Selected",
+      select: "Select",
+      currentlyShown: "Currently on screen",
+      selectAccessibility: "Select {{name}}",
+      refresh: "Refresh",
+      refreshAccessibility: "Refresh pets",
+      addCustom: "Add custom",
+      addCustomAccessibility: "Add a custom pet",
+      addCustomErrorTitle: "Couldn't add pet",
+      addCustomErrorMessage: "Check the pet folder and try again.",
+      noHost: "Connect to a host to choose a pet.",
+      unavailableTransport: "Pet selection isn't available for this host connection.",
+      loading: "Loading pets...",
+      unavailable: "Pets couldn't be loaded from this host.",
+      empty: "No pets are installed on this host.",
+      description:
+        "Choose the companion that stays on screen and keeps you updated on active chats.",
+      unavailableSelection:
+        "{{selected}} isn't available here, so {{current}} is being shown instead.",
+      choose: "Choose pet",
+      appearance: "Appearance",
+      sizeLabel: "Pet size",
+      sizeDescription: "Adjust the size of your on-screen pet",
+      sizeValue: "{{size}} px",
+      sizeAccessibility: "Pet size: {{size}} pixels",
     },
     general: {
       title: "General",
@@ -1561,6 +1609,11 @@ export const en = {
           claude: "Claude",
           ghostty: "Ghostty",
           black: "Black",
+          aurora: "Aurora",
+          mesh: "Mesh",
+          deep: "Deep",
+          sweep: "Sweep",
+          ember: "Ember",
           auto: "System",
         },
       },

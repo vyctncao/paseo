@@ -61,6 +61,11 @@ function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
     claude: "settings.appearance.theme.options.claude",
     ghostty: "settings.appearance.theme.options.ghostty",
     black: "settings.appearance.theme.options.black",
+    aurora: "settings.appearance.theme.options.aurora",
+    mesh: "settings.appearance.theme.options.mesh",
+    deep: "settings.appearance.theme.options.deep",
+    sweep: "settings.appearance.theme.options.sweep",
+    ember: "settings.appearance.theme.options.ember",
     auto: "settings.appearance.theme.options.auto",
   };
   return t(labelKeys[value]);
@@ -74,6 +79,8 @@ const DARK_VARIANT_THEMES: readonly AppSettings["theme"][] = [
   "ghostty",
   "black",
 ];
+// Glass themes: translucent surfaces over a gradient backdrop scene.
+const GLASS_THEMES: readonly AppSettings["theme"][] = ["aurora", "mesh", "deep", "sweep", "ember"];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");
 // those read as a bug, so show a human label in the placeholder instead.
@@ -179,6 +186,15 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
           ))}
           <DropdownMenuSeparator />
           {DARK_VARIANT_THEMES.map((themeValue) => (
+            <ThemeMenuItem
+              key={themeValue}
+              themeValue={themeValue}
+              selected={value === themeValue}
+              onChange={onChange}
+            />
+          ))}
+          <DropdownMenuSeparator />
+          {GLASS_THEMES.map((themeValue) => (
             <ThemeMenuItem
               key={themeValue}
               themeValue={themeValue}

@@ -2,14 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Folder, GitBranch, GitPullRequest, X } from "lucide-react-native";
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  GitBranch,
+  GitPullRequest,
+  Plus,
+  X,
+} from "lucide-react-native";
 import { Composer } from "@/composer";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
@@ -36,6 +44,12 @@ import {
   type HostRuntimeConnectionStatus,
 } from "@/runtime/host-runtime";
 import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
+import { ProviderUsageList } from "@/provider-usage/list";
+import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { providerUsageCopy } from "@/provider-usage/copy";
+import { visiblePlanUsageProviders } from "@/provider-usage/plan-visibility";
+import { useProviderUsageVisibility } from "@/provider-usage/use-provider-usage-visibility";
+import type { ProviderUsageView } from "@/provider-usage/types";
 import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -44,6 +58,7 @@ import { useWorkspace } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
+import { useProjectPickerStore } from "@/stores/project-picker-store";
 import {
   useWorkspaceDraftSubmissionStore,
   type PendingWorkspaceDraftSetup,
@@ -66,7 +81,11 @@ import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import type { MessagePayload } from "@/composer/types";
-import type { AgentAttachment, GitHubSearchItem } from "@getpaseo/protocol/messages";
+import {
+  STANDALONE_TASKS_PROJECT_ID,
+  type AgentAttachment,
+  type GitHubSearchItem,
+} from "@getpaseo/protocol/messages";
 import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
@@ -85,7 +104,13 @@ import {
   resolveNewWorkspaceAutomaticServerId,
   resolveNewWorkspaceInitialServerId,
 } from "./new-workspace-initial-context";
-import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
+import {
+  appendAddProjectOption,
+  appendNoProjectOption,
+  isAddProjectOption,
+  isNoProjectOption,
+  useNewWorkspaceProjectPicker,
+} from "./new-workspace/project-picker";
 
 function resolveCheckoutRequest(
   selectedItem: PickerItem | null,
@@ -255,6 +280,7 @@ function ProjectPickerTrigger({
   badgePressableStyle,
   label,
   projectKey,
+  isNoProjectSelected,
   iconDataUri,
   iconColor,
   iconSize,
@@ -265,6 +291,7 @@ function ProjectPickerTrigger({
   badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
   label: string;
   projectKey: string | null;
+  isNoProjectSelected: boolean;
   iconDataUri: string | null;
   iconColor: string;
   iconSize: number;
@@ -284,18 +311,14 @@ function ProjectPickerTrigger({
           accessibilityLabel="Workspace project"
         >
           <View style={styles.badgeIconBox}>
-            {projectKey ? (
-              <ProjectIconView
-                iconDataUri={iconDataUri}
-                initial={placeholderInitial}
-                projectKey={projectKey}
-                imageStyle={styles.projectIcon}
-                fallbackStyle={styles.projectIconFallback}
-                textStyle={styles.projectIconFallbackText}
-              />
-            ) : (
-              <Folder size={iconSize} color={iconColor} />
-            )}
+            <ProjectPickerLeadingIcon
+              isNoProjectSelected={isNoProjectSelected}
+              projectKey={projectKey}
+              iconDataUri={iconDataUri}
+              placeholderInitial={placeholderInitial}
+              iconColor={iconColor}
+              iconSize={iconSize}
+            />
           </View>
           <Text style={styles.badgeText} numberOfLines={1}>
             {label}
@@ -306,6 +329,39 @@ function ProjectPickerTrigger({
         <Text style={styles.tooltipText}>Choose project</Text>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function ProjectPickerLeadingIcon({
+  isNoProjectSelected,
+  projectKey,
+  iconDataUri,
+  placeholderInitial,
+  iconColor,
+  iconSize,
+}: {
+  isNoProjectSelected: boolean;
+  projectKey: string | null;
+  iconDataUri: string | null;
+  placeholderInitial: string;
+  iconColor: string;
+  iconSize: number;
+}) {
+  if (isNoProjectSelected) {
+    return <X size={iconSize} color={iconColor} />;
+  }
+  if (!projectKey) {
+    return <Folder size={iconSize} color={iconColor} />;
+  }
+  return (
+    <ProjectIconView
+      iconDataUri={iconDataUri}
+      initial={placeholderInitial}
+      projectKey={projectKey}
+      imageStyle={styles.projectIcon}
+      fallbackStyle={styles.projectIconFallback}
+      textStyle={styles.projectIconFallbackText}
+    />
   );
 }
 
@@ -499,6 +555,84 @@ function ProjectOptionItem({
   );
 }
 
+function AddProjectOptionItem({
+  label,
+  selected,
+  active,
+  disabled,
+  onPress,
+  iconColor,
+  iconSize,
+}: {
+  label: string;
+  selected: boolean;
+  active: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  iconColor: string;
+  iconSize: number;
+}) {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.rowIconBox}>
+        <Plus size={iconSize} color={iconColor} />
+      </View>
+    ),
+    [iconColor, iconSize],
+  );
+
+  return (
+    <ComboboxItem
+      testID="new-workspace-project-picker-add-project"
+      label={label}
+      selected={selected}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
+function NoProjectOptionItem({
+  label,
+  selected,
+  active,
+  disabled,
+  onPress,
+  iconColor,
+  iconSize,
+}: {
+  label: string;
+  selected: boolean;
+  active: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  iconColor: string;
+  iconSize: number;
+}) {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.rowIconBox}>
+        <X size={iconSize} color={iconColor} />
+      </View>
+    ),
+    [iconColor, iconSize],
+  );
+
+  return (
+    <ComboboxItem
+      testID="new-workspace-project-picker-no-project"
+      label={label}
+      selected={selected}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
 function branchOptionId(name: string): string {
   return `${BRANCH_OPTION_PREFIX}${name}`;
 }
@@ -573,6 +707,34 @@ function NewWorkspaceProjectPickerOption({
   isPending: boolean;
   supportsWorkspaceMultiplicity: boolean;
 }) {
+  const { theme } = useUnistyles();
+  if (isAddProjectOption(option.id)) {
+    return (
+      <AddProjectOptionItem
+        label={option.label}
+        selected={selected}
+        active={active}
+        disabled={isPending}
+        onPress={onPress}
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+    );
+  }
+  if (isNoProjectOption(option.id)) {
+    return (
+      <NoProjectOptionItem
+        label={option.label}
+        selected={selected}
+        active={active}
+        disabled={isPending}
+        onPress={onPress}
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+    );
+  }
+
   const project = projectByOptionId.get(option.id);
   if (!project) return <View key={option.id} />;
   const sourceDirectory =
@@ -744,9 +906,9 @@ function isolationLabel(t: TFunction, isolation: "local" | "worktree"): string {
 
 function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
   if (input.isCompact) {
-    return [styles.content, styles.contentCompact, { paddingBottom: input.insetBottom }];
+    return [styles.scrollContent, styles.contentCompact, { paddingBottom: input.insetBottom }];
   }
-  return [styles.content, styles.contentCentered];
+  return [styles.scrollContent, styles.contentCentered];
 }
 
 function buildNewWorkspaceDraftKey(input: {
@@ -867,6 +1029,41 @@ async function createMultiplicityWorkspace(input: {
           path: input.sourceDirectory,
           projectId: input.project.projectKey,
         },
+    ...(firstAgentContext ? { firstAgentContext } : {}),
+  });
+  if (payload.error || !payload.workspace) {
+    throw new Error(payload.error ?? input.createFailedMessage);
+  }
+  const normalizedWorkspace = normalizeWorkspaceDescriptor(payload.workspace);
+  const workspaceForInitialMerge = input.withInitialAgent
+    ? { ...normalizedWorkspace, status: "running" as const, statusEnteredAt: new Date() }
+    : normalizedWorkspace;
+  input.mergeWorkspaces(input.serverId, [workspaceForInitialMerge]);
+  return normalizedWorkspace;
+}
+
+async function createStandaloneTaskWorkspace(input: {
+  client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
+  withInitialAgent: boolean;
+  prompt: string;
+  attachments: AgentAttachment[];
+  mergeWorkspaces: (
+    serverId: string,
+    workspaces: ReturnType<typeof normalizeWorkspaceDescriptor>[],
+  ) => void;
+  serverId: string;
+  createFailedMessage: string;
+}): Promise<ReturnType<typeof normalizeWorkspaceDescriptor>> {
+  const firstAgentContext = buildFirstAgentContext({
+    prompt: input.prompt,
+    attachments: input.attachments,
+  });
+  const payload = await input.client.createWorkspace({
+    source: {
+      kind: "directory",
+      path: "~",
+      projectId: STANDALONE_TASKS_PROJECT_ID,
+    },
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
@@ -1354,6 +1551,7 @@ interface NewWorkspaceFormStackInput {
     options: ComboboxOptionType[];
     triggerLabel: string;
     selectedProject: HostProjectListItem | null;
+    isNoProjectSelected: boolean;
     iconDataByProjectKey: Map<string, string | null>;
     selectedOptionId: string;
     onSelect: (id: string) => void;
@@ -1414,6 +1612,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         badgePressableStyle={badgePressableStyle}
         label={project.triggerLabel}
         projectKey={project.selectedProject?.projectKey ?? null}
+        isNoProjectSelected={project.isNoProjectSelected}
         iconDataUri={
           project.selectedProject
             ? (project.iconDataByProjectKey.get(project.selectedProject.projectKey) ?? null)
@@ -1550,6 +1749,41 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
+/**
+ * Plan usage for every configured provider on the selected host, shown above the
+ * workspace form. Renders only when data is ready with at least one plan — a loading hint
+ * while fetching, and nothing on an unsupported host or error, so the empty-state hero
+ * stays clean.
+ */
+function NewWorkspacePlanUsage({
+  view,
+  hiddenProviderIds,
+}: {
+  view: ProviderUsageView;
+  hiddenProviderIds: ReadonlySet<string>;
+}) {
+  if (view.kind === "loading") {
+    return (
+      <View style={styles.planUsageContainer}>
+        <Text style={styles.planUsageLabel}>{providerUsageCopy.loading}</Text>
+      </View>
+    );
+  }
+  if (view.kind !== "ready") {
+    return null;
+  }
+  const providers = visiblePlanUsageProviders(view.payload.providers, hiddenProviderIds);
+  if (providers.length === 0) return null;
+
+  return (
+    <View style={styles.planUsageContainer} testID="new-workspace-plan-usage">
+      <Text style={styles.planUsageLabel}>{providerUsageCopy.title}</Text>
+      <ProviderUsageList providers={providers} />
+    </View>
+  );
+}
+
+// oxlint-disable-next-line complexity -- orchestrates the screen's independent picker and submit states.
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1563,6 +1797,7 @@ export function NewWorkspaceScreen({
   const isCompact = useIsCompactFormFactor();
   const toast = useToast();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const openAddProjectPicker = useProjectPickerStore((state) => state.open);
   const {
     allHosts,
     selectedServerId,
@@ -1581,6 +1816,11 @@ export function NewWorkspaceScreen({
   });
   // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
   const supportsWorkspaceMultiplicity = useHostFeature(selectedServerId, "workspaceMultiplicity");
+  // Plan usage across every configured provider on the selected host, so the cost of
+  // the run being composed is visible before it starts. Self-gates on the host feature
+  // and renders nothing until data is ready.
+  const providerUsage = useProviderUsage(selectedServerId);
+  const { hiddenProviderIdSet: hiddenUsageProviderIds } = useProviderUsageVisibility();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
@@ -1615,6 +1855,7 @@ export function NewWorkspaceScreen({
     projectByOptionId,
     selectedProjectOptionId,
     projectTriggerLabel,
+    isNoProjectSelected,
     handleSelectProjectOption: selectProjectOption,
   } = useNewWorkspaceProjectPicker({
     selectedServerId,
@@ -1623,6 +1864,14 @@ export function NewWorkspaceScreen({
     lastActiveProject,
     allowAllProjects: supportsWorkspaceMultiplicity,
   });
+  const projectPickerOptionsWithActions = useMemo(
+    () =>
+      appendNoProjectOption(
+        appendAddProjectOption(projectPickerOptions, t("sidebar.actions.addProject")),
+        t("newWorkspace.projectPicker.noProject"),
+      ),
+    [projectPickerOptions, t],
+  );
 
   const projectIconTargets = useMemo(
     () =>
@@ -1787,6 +2036,12 @@ export function NewWorkspaceScreen({
 
   const handleSelectProjectOption = useCallback(
     (id: string) => {
+      if (isAddProjectOption(id)) {
+        setProjectPickerOpen(false);
+        openAddProjectPicker(selectedServerId);
+        return;
+      }
+
       // selectProjectOption enforces selectability (worktree-only when
       // multiplicity is off, any project when it's on); don't re-gate here on
       // canCreateWorktree or non-git projects become unselectable.
@@ -1794,7 +2049,7 @@ export function NewWorkspaceScreen({
       setProjectPickerOpen(false);
       setManualPickerSelection(null);
     },
-    [selectProjectOption],
+    [openAddProjectPicker, selectProjectOption, selectedServerId],
   );
 
   const checkoutHintPrAttachment = useMemo(
@@ -1934,34 +2189,47 @@ export function NewWorkspaceScreen({
       if (createdWorkspace) {
         return createdWorkspace;
       }
-      if (!selectedProject) {
-        throw new Error("Choose a project");
+      let normalizedWorkspace: ReturnType<typeof normalizeWorkspaceDescriptor>;
+      if (isNoProjectSelected) {
+        normalizedWorkspace = await createStandaloneTaskWorkspace({
+          client: withConnectedClient(),
+          withInitialAgent: input.withInitialAgent,
+          prompt: input.prompt,
+          attachments: input.attachments,
+          mergeWorkspaces,
+          serverId: selectedServerId,
+          createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
+        });
+      } else {
+        if (!selectedProject) {
+          throw new Error("Choose a project");
+        }
+        if (!selectedSourceDirectory) {
+          throw new Error("Choose a host for this project");
+        }
+        normalizedWorkspace = supportsWorkspaceMultiplicity
+          ? await createMultiplicityWorkspace({
+              client: withConnectedClient(),
+              isolation: effectiveIsolation,
+              project: selectedProject,
+              sourceDirectory: selectedSourceDirectory,
+              selectedItem,
+              currentBranch,
+              withInitialAgent: input.withInitialAgent,
+              prompt: input.prompt,
+              attachments: input.attachments,
+              mergeWorkspaces,
+              serverId: selectedServerId,
+              createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
+            })
+          : await createAndMergeWorkspace({
+              client: withConnectedClient(),
+              createInput: buildCreateWorktreeInput(input),
+              mergeWorkspaces,
+              serverId: selectedServerId,
+              createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
+            });
       }
-      if (!selectedSourceDirectory) {
-        throw new Error("Choose a host for this project");
-      }
-      const normalizedWorkspace = supportsWorkspaceMultiplicity
-        ? await createMultiplicityWorkspace({
-            client: withConnectedClient(),
-            isolation: effectiveIsolation,
-            project: selectedProject,
-            sourceDirectory: selectedSourceDirectory,
-            selectedItem,
-            currentBranch,
-            withInitialAgent: input.withInitialAgent,
-            prompt: input.prompt,
-            attachments: input.attachments,
-            mergeWorkspaces,
-            serverId: selectedServerId,
-            createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
-          })
-        : await createAndMergeWorkspace({
-            client: withConnectedClient(),
-            createInput: buildCreateWorktreeInput(input),
-            mergeWorkspaces,
-            serverId: selectedServerId,
-            createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
-          });
       setCreatedWorkspace(normalizedWorkspace);
       return normalizedWorkspace;
     },
@@ -1970,6 +2238,7 @@ export function NewWorkspaceScreen({
       createdWorkspace,
       currentBranch,
       effectiveIsolation,
+      isNoProjectSelected,
       mergeWorkspaces,
       selectedItem,
       selectedProject,
@@ -2093,9 +2362,10 @@ export function NewWorkspaceScreen({
     project: {
       anchorRef: projectPickerAnchorRef,
       open: openProjectPicker,
-      options: projectPickerOptions,
+      options: projectPickerOptionsWithActions,
       triggerLabel: projectTriggerLabel,
       selectedProject,
+      isNoProjectSelected,
       iconDataByProjectKey: projectIconDataByProjectKey,
       selectedOptionId: selectedProjectOptionId,
       onSelect: handleSelectProjectOption,
@@ -2121,7 +2391,7 @@ export function NewWorkspaceScreen({
       openState: isolationPickerOpen,
       onOpenChange: handleIsolationPickerOpenChange,
       renderOption: renderIsolationOption,
-      canCreateWorktree,
+      canCreateWorktree: canCreateWorktree && !isNoProjectSelected,
     },
     base: {
       anchorRef: pickerAnchorRef,
@@ -2137,7 +2407,7 @@ export function NewWorkspaceScreen({
       setSearchQuery: setPickerSearchQuery,
       emptyText: pickerEmptyText,
       renderOption: renderPickerOption,
-      showRefPicker,
+      showRefPicker: showRefPicker && !isNoProjectSelected,
     },
   });
 
@@ -2176,45 +2446,57 @@ export function NewWorkspaceScreen({
       theme.iconSize.sm,
     ],
   );
-  const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
+  const screenHeaderLeft = useMemo(() => <SidebarMenuToggle mobileOnly />, []);
 
   return (
     <FileDropZone style={styles.container}>
       <ScreenHeader left={screenHeaderLeft} borderless />
-      <View style={contentStyle}>
+      <View style={styles.content}>
         <TitlebarDragRegion />
-        <ReanimatedAnimated.View style={centeredStyle}>
-          <View style={styles.composerTitleContainer}>
-            <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
-          </View>
-          {formStack}
-          <Composer
-            externalKeyboardShift
-            agentId={draftKey}
-            serverId={selectedServerId}
-            isPaneFocused={true}
-            onSubmitMessage={handleSubmitNewWorkspace}
-            allowEmptySubmit={true}
-            submitButtonAccessibilityLabel={t("newWorkspace.create")}
-            submitButtonTestID="workspace-create-submit"
-            submitIcon="return"
-            isSubmitLoading={isPending}
-            submitBehavior="preserve-and-lock"
-            blurOnSubmit={true}
-            value={chatDraft.text}
-            onChangeText={chatDraft.setText}
-            attachments={chatDraft.attachments}
-            attachmentScopeKeys={visibleDraftContextScopeKeys}
-            onChangeAttachments={chatDraft.setAttachments}
-            cwd={selectedSourceDirectory ?? ""}
-            clearDraft={handleClearDraft}
-            autoFocus
-            commandDraftConfig={composerState?.commandDraftConfig}
-            agentControls={agentControlsWithDisabled}
-            footer={composerFooter}
-          />
-          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-        </ReanimatedAnimated.View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={contentStyle}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          testID="new-workspace-scroll"
+        >
+          <ReanimatedAnimated.View style={centeredStyle}>
+            <NewWorkspacePlanUsage
+              view={providerUsage.view}
+              hiddenProviderIds={hiddenUsageProviderIds}
+            />
+            <View style={styles.composerTitleContainer} testID="new-workspace-title">
+              <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
+            </View>
+            {formStack}
+            <Composer
+              externalKeyboardShift
+              agentId={draftKey}
+              serverId={selectedServerId}
+              isPaneFocused={true}
+              onSubmitMessage={handleSubmitNewWorkspace}
+              allowEmptySubmit={true}
+              submitButtonAccessibilityLabel={t("newWorkspace.create")}
+              submitButtonTestID="workspace-create-submit"
+              submitIcon="return"
+              isSubmitLoading={isPending}
+              submitBehavior="preserve-and-lock"
+              blurOnSubmit={true}
+              value={chatDraft.text}
+              onChangeText={chatDraft.setText}
+              attachments={chatDraft.attachments}
+              attachmentScopeKeys={visibleDraftContextScopeKeys}
+              onChangeAttachments={chatDraft.setAttachments}
+              cwd={selectedSourceDirectory ?? ""}
+              clearDraft={handleClearDraft}
+              autoFocus
+              commandDraftConfig={composerState?.commandDraftConfig}
+              agentControls={agentControlsWithDisabled}
+              footer={composerFooter}
+            />
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          </ReanimatedAnimated.View>
+        </ScrollView>
       </View>
     </FileDropZone>
   );
@@ -2229,6 +2511,13 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     position: "relative",
     flex: 1,
+  },
+  scroll: {
+    flex: 1,
+    width: "100%",
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: "center",
   },
   contentCentered: {
@@ -2256,6 +2545,18 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.destructive,
     lineHeight: 20,
+  },
+  planUsageContainer: {
+    marginBottom: theme.spacing[6],
+    paddingHorizontal: theme.spacing[6],
+    gap: theme.spacing[2],
+  },
+  planUsageLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   formStack: {
     marginBottom: theme.spacing[8],

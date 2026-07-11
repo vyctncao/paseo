@@ -185,7 +185,7 @@ describe("window-manager", () => {
       ).toEqual({
         titleBarStyle: "hidden",
         titleBarOverlay: true,
-        trafficLightPosition: { x: 16, y: 14 },
+        trafficLightPosition: { x: 26, y: 29 },
       });
     });
   });

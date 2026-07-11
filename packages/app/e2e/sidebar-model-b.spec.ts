@@ -1,16 +1,13 @@
 import { test, expect, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
-import { gotoWorkspace, clickNewTerminal } from "./helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
-import { seedMockAgentWorkspace } from "./helpers/mock-agent";
+import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { getServerId } from "./helpers/server-id";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
-import { getVisibleWorkspaceAgentTabIds } from "./helpers/workspace-tabs";
 
-// Model B sidebar shape: every project — git or non-git, single- or
-// multi-workspace — renders as the same expandable parent, the deepest sidebar
-// level is the workspace row, and tabs/agents/terminals NEVER appear in the
-// sidebar. These specs prove all three invariants end to end.
+// Codex-style sidebar shape: a single-workspace project lists its chats directly;
+// multi-workspace projects retain workspace rows for branch/worktree ownership.
+// Utility tabs such as terminals never become sidebar chat rows.
 
 function workspaceRow(page: Page, workspaceId: string) {
   return page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`);
@@ -85,30 +82,22 @@ test.describe("Model B sidebar shape", () => {
     }
   });
 
-  test("no tab, agent, or terminal ever renders as a sidebar row", async ({ page }) => {
+  test("a single-workspace project lists chats directly without a duplicate workspace row", async ({
+    page,
+  }) => {
     const mock = await seedMockAgentWorkspace({
       repoPrefix: "model-b-leaf-",
       title: "Leaf workspace",
     });
 
     try {
-      // Open the workspace and materialize both an agent tab and a terminal tab.
-      await gotoWorkspace(page, mock.workspaceId);
-      const agentTabs = await getVisibleWorkspaceAgentTabIds(page);
-      expect(agentTabs).toContain(`workspace-tab-agent_${mock.agentId}`);
+      await openAgentRoute(page, { workspaceId: mock.workspaceId, agentId: mock.agentId });
 
-      await clickNewTerminal(page);
-      await expect(
-        page.locator('[data-testid^="workspace-tab-terminal_"]').filter({ visible: true }).first(),
-      ).toBeVisible({ timeout: 30_000 });
-
-      // The deepest level inside the sidebar is the workspace row: no tab,
-      // agent, or terminal element appears as a sidebar descendant.
-      const sidebar = page.getByTestId("sidebar-sessions").filter({ visible: true }).first();
-      await expect(workspaceRow(page, mock.workspaceId).first()).toBeVisible({ timeout: 30_000 });
-      await expect(sidebar.locator('[data-testid^="workspace-tab-"]')).toHaveCount(0);
-      await expect(sidebar.locator('[data-testid^="sidebar-agent-row-"]')).toHaveCount(0);
-      await expect(sidebar.locator('[data-testid^="sidebar-terminal-row-"]')).toHaveCount(0);
+      // The project is the visible parent and its agent tab becomes a direct chat
+      // row. The redundant sole workspace stays out of the list.
+      await expect(workspaceRow(page, mock.workspaceId)).toHaveCount(0);
+      await expect(page.locator('[data-testid^="sidebar-agent-row-"]')).toHaveCount(1);
+      await expect(page.locator('[data-testid^="sidebar-terminal-row-"]')).toHaveCount(0);
     } finally {
       await mock.cleanup();
     }

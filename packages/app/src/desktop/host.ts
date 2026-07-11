@@ -112,6 +112,51 @@ export interface DesktopWindowModuleBridge {
   getCurrentWindow?: () => DesktopWindowBridge;
 }
 
+export type DesktopPetLifecycle =
+  | "idle"
+  | "running"
+  | "thinking"
+  | "needs_input"
+  | "error"
+  | "completed";
+
+export interface DesktopPetActivity {
+  key: string;
+  serverId: string;
+  agentId: string;
+  workspaceId: string | null;
+  title: string;
+  hostLabel: string;
+  status: "needs_input" | "failed" | "attention" | "running";
+  statusLabel: string;
+}
+
+export type DesktopPetOverlayState =
+  | { visible: false }
+  | {
+      visible: true;
+      spritesheetUrl: string;
+      spritesheetAuthorizationHeader?: string;
+      rows: number;
+      lifecycle: DesktopPetLifecycle;
+      size: number;
+      totalActivityCount: number;
+      trayTitle: string;
+      activities: DesktopPetActivity[];
+    };
+
+export interface DesktopPetImportResult {
+  manifestText: string;
+  spritesheetBase64: string;
+  fileName: string;
+}
+
+export interface DesktopPetBridge {
+  updateState?: (state: DesktopPetOverlayState) => Promise<void>;
+  importFromDirectory?: () => Promise<DesktopPetImportResult | null>;
+  mainRendererReady?: () => Promise<void>;
+}
+
 export interface DesktopEventsBridge {
   on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
@@ -157,6 +202,7 @@ export interface DesktopHostBridge {
   getPendingOpenProject?: () => Promise<string | null>;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
+  pet?: DesktopPetBridge;
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;

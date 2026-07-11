@@ -24,14 +24,24 @@ function fillToneStyle(tone: ProviderUsageTone) {
   }
 }
 
-export function ProviderUsageWindowBar({ window }: { window: ProviderUsageWindow }) {
+export function ProviderUsageWindowBar({
+  window,
+  accentColor,
+}: {
+  window: ProviderUsageWindow;
+  accentColor?: string;
+}) {
   const usedPct = resolveUsedPct(window);
   const tone = window.tone ?? deriveTone(usedPct);
 
   const fillWidth = clampPct(usedPct ?? 0);
   const fillStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [styles.fill, fillToneStyle(tone), { width: `${fillWidth}%` }],
-    [fillWidth, tone],
+    () => [
+      styles.fill,
+      accentColor ? { backgroundColor: accentColor } : fillToneStyle(tone),
+      { width: `${fillWidth}%` },
+    ],
+    [accentColor, fillWidth, tone],
   );
 
   const isAtRisk = window.runsOutAt != null && window.shortfallPct != null;

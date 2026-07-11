@@ -888,7 +888,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
     position: "relative",
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surface0,
   },
   terminalGestureContainer: {
     flex: 1,

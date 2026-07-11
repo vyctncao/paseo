@@ -67,6 +67,26 @@ test.describe("provider usage settings", () => {
     await expect(card.getByText("Valid until", { exact: true })).toBeVisible();
     await expect(card.getByText("2026-12-31", { exact: true })).toBeVisible();
     await expect(card.getByText(/OpenUsage 0\.6\.27/)).toBeVisible();
+
+    const claudeDisplay = card.getByRole("switch", {
+      name: "Display Claude in Plan Usage",
+    });
+    const codexDisplay = card.getByRole("switch", {
+      name: "Display Codex in Plan Usage",
+    });
+    const glmDisplay = card.getByRole("switch", {
+      name: "Display GLM coding plan in Plan Usage",
+    });
+    await expect(claudeDisplay).toBeChecked();
+    await expect(codexDisplay).toBeChecked();
+    await expect(glmDisplay).toBeChecked();
+
+    await glmDisplay.click();
+
+    await expect(glmDisplay).not.toBeChecked();
+    await expect(card.getByText("GLM coding plan", { exact: true }).first()).toBeVisible();
+    await expect(card.getByText("Biweekly", { exact: true })).not.toBeVisible();
+    await expect(card.getByText("Daily", { exact: true })).not.toBeVisible();
   });
 
   test("refresh invalidates and refetches usage", async ({ page }) => {

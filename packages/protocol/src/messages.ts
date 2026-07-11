@@ -1729,6 +1729,10 @@ export const FirstAgentContextSchema = z.object({
   attachments: AgentAttachmentsSchema,
 });
 
+// Workspaces created without a user-selected project still need an internal
+// project identity for persistence. Clients render this group as flat tasks.
+export const STANDALONE_TASKS_PROJECT_ID = "paseo:standalone-tasks";
+
 export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
   cwd: z.string(),

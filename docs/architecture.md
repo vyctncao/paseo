@@ -324,6 +324,27 @@ $PASEO_HOME/
 └── daemon.log                                  # Daemon trace logs (rotated)
 ```
 
+## Desktop pet companion
+
+The companion is driven by the same global agent projection as the sidebar, so
+its activity tray spans every connected host and agent provider. The client
+orders active chats by needs-input, blocked, ready, and running priority.
+
+The daemon exposes the pet catalog over authenticated REST. It combines Paseo's
+original built-in presets with Codex-compatible custom packages from
+`${CODEX_HOME:-~/.codex}/pets`. Imports validate the manifest, image type,
+atlas dimensions, and paths before an atomic install; renderers never write pet
+packages directly to a host filesystem.
+
+Browser and mobile builds render the companion in the app shell. The Electron
+build resolves `on-screen-pet.electron.tsx` instead: that publisher sends the
+selected sprite, size, lifecycle, and bounded activity list to a singleton
+transparent `BrowserWindow`. The desktop main process owns always-on-top
+behavior, display-bound position persistence, drag handling, tray resizing, and
+navigation back into the most recently used Paseo window. Keeping those duties
+in the main process prevents the pet from disappearing when the app window is
+covered or minimized.
+
 ## Deployment models
 
 1. **Local daemon** (default): `paseo daemon start` on `127.0.0.1:6767`

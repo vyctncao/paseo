@@ -409,6 +409,7 @@ function SplitActionButton({ onPress, label, shortcutKeys, icon }: SplitActionBu
 }
 
 interface WorkspaceDesktopTabsRowProps {
+  hidden?: boolean;
   paneId?: string;
   isFocused?: boolean;
   tabs: WorkspaceDesktopTabRowItem[];
@@ -729,6 +730,7 @@ function TabChip({
 }
 
 export function WorkspaceDesktopTabsRow({
+  hidden = false,
   paneId,
   isFocused = false,
   tabs,
@@ -961,6 +963,10 @@ export function WorkspaceDesktopTabsRow({
     ],
     [layout.requiresHorizontalScrollFallback],
   );
+
+  if (hidden) {
+    return null;
+  }
 
   const row = (
     <View

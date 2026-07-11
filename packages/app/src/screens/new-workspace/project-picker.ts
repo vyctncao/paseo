@@ -11,6 +11,7 @@ import {
   createManualProjectSelectionContextKey,
   createProjectSelectionContextKey,
   createProjectSelection,
+  isNoProjectSelection,
   reconcileProjectSelection,
   resolveInitialProjectSelectionSource,
   resolveProjectSelection,
@@ -19,6 +20,30 @@ import {
 } from "./project-selection";
 
 const PROJECT_OPTION_PREFIX = "project:";
+export const ADD_PROJECT_OPTION_ID = "action:add-project";
+export const NO_PROJECT_OPTION_ID = "action:no-project";
+
+export function appendAddProjectOption(
+  options: readonly ComboboxOptionType[],
+  label: string,
+): ComboboxOptionType[] {
+  return [...options, { id: ADD_PROJECT_OPTION_ID, label }];
+}
+
+export function isAddProjectOption(id: string): boolean {
+  return id === ADD_PROJECT_OPTION_ID;
+}
+
+export function appendNoProjectOption(
+  options: readonly ComboboxOptionType[],
+  label: string,
+): ComboboxOptionType[] {
+  return [...options, { id: NO_PROJECT_OPTION_ID, label }];
+}
+
+export function isNoProjectOption(id: string): boolean {
+  return id === NO_PROJECT_OPTION_ID;
+}
 
 interface NewWorkspaceProjectPickerInput {
   selectedServerId: string;
@@ -35,6 +60,7 @@ interface NewWorkspaceProjectPickerState {
   projectByOptionId: Map<string, HostProjectListItem>;
   selectedProjectOptionId: string;
   projectTriggerLabel: string;
+  isNoProjectSelected: boolean;
   handleSelectProjectOption: (id: string) => void;
 }
 
@@ -161,12 +187,23 @@ export function useNewWorkspaceProjectPicker({
 
   const activeSelection = reconcileProjectSelection(projectSelection, selectionContext);
   const selectedProject = resolveProjectSelection(activeSelection, selectionContext);
+  const isNoProjectSelected = isNoProjectSelection(activeSelection);
   const { options: projectPickerOptions, projectByOptionId } = useMemo(
     () => computeProjectOptionData(selectableProjects),
     [selectableProjects],
   );
   const handleSelectProjectOption = useCallback(
     (id: string) => {
+      if (isNoProjectOption(id)) {
+        setProjectSelection({
+          contextKey: manualSelectionContextKey,
+          projectKey: null,
+          project: null,
+          source: "manual",
+        });
+        return;
+      }
+
       const project = projectByOptionId.get(id);
       if (!project) return;
       if (!allowAllProjects && !project.hosts.some((host) => host.canCreateWorktree)) return;
@@ -187,8 +224,15 @@ export function useNewWorkspaceProjectPicker({
       : null,
     projectPickerOptions,
     projectByOptionId,
-    selectedProjectOptionId: selectedProject ? projectOptionId(selectedProject.projectKey) : "",
-    projectTriggerLabel: selectedProject?.projectName ?? "Choose project",
+    selectedProjectOptionId: isNoProjectSelected
+      ? NO_PROJECT_OPTION_ID
+      : selectedProject
+        ? projectOptionId(selectedProject.projectKey)
+        : "",
+    projectTriggerLabel: isNoProjectSelected
+      ? "Don't work in a project"
+      : (selectedProject?.projectName ?? "Choose project"),
+    isNoProjectSelected,
     handleSelectProjectOption,
   };
 }

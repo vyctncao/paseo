@@ -192,6 +192,7 @@ import {
 } from "@/workspace/file-open";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
+import { openWorkspaceUtilitySplit } from "@/screens/workspace/workspace-utility-split";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -199,6 +200,7 @@ const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
 const EMPTY_SET = new Set<string>();
+const EMPTY_SHORTCUT_KEYS: ShortcutKey[] = [];
 
 function getWorkspaceScripts(
   workspaceDescriptor: WorkspaceDescriptor | null | undefined,
@@ -274,7 +276,7 @@ const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} uniProps={mutedColorMapping
 const MENU_IMPORT_ICON = <ThemedImport size={16} uniProps={mutedColorMapping} />;
 const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
-const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
+const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle mobileOnly />;
 
 interface WorkspaceScreenProps {
   serverId: string;
@@ -1015,6 +1017,67 @@ function WorkspaceHeaderMenuTriggerIcon({
   return <Icon size={16} uniProps={colorMapping} />;
 }
 
+function WorkspaceHeaderUtilityActions({
+  isMobile,
+  showBrowser,
+  terminalDisabled,
+  onCreateTerminal,
+  onCreateBrowser,
+}: {
+  isMobile: boolean;
+  showBrowser: boolean;
+  terminalDisabled: boolean;
+  onCreateTerminal: () => void;
+  onCreateBrowser: () => void;
+}) {
+  const { t } = useTranslation();
+  if (isMobile) {
+    return null;
+  }
+
+  return (
+    <>
+      <HeaderToggleButton
+        testID="workspace-header-split-terminal"
+        disabled={terminalDisabled}
+        onPress={onCreateTerminal}
+        tooltipLabel={t("workspace.header.actions.newTerminal")}
+        tooltipKeys={EMPTY_SHORTCUT_KEYS}
+        tooltipSide="bottom"
+        style={styles.compactHeaderActionButton}
+        accessibilityRole="button"
+        accessibilityLabel={t("workspace.header.actions.newTerminal")}
+      >
+        {({ hovered, pressed }) => (
+          <ThemedSquareTerminal
+            size={16}
+            uniProps={hovered || pressed ? foregroundColorMapping : mutedColorMapping}
+          />
+        )}
+      </HeaderToggleButton>
+      {showBrowser ? (
+        <HeaderToggleButton
+          testID="workspace-header-split-browser"
+          onPress={onCreateBrowser}
+          tooltipLabel={t("workspace.tabs.actions.newBrowser")}
+          tooltipKeys={EMPTY_SHORTCUT_KEYS}
+          tooltipSide="bottom"
+          style={styles.compactHeaderActionButton}
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.tabs.actions.newBrowser")}
+        >
+          {({ hovered, pressed }) => (
+            <ThemedGlobe
+              size={16}
+              uniProps={hovered || pressed ? foregroundColorMapping : mutedColorMapping}
+            />
+          )}
+        </HeaderToggleButton>
+      ) : null}
+    </>
+  );
+}
+
 function WorkspaceHeaderMenu({
   normalizedServerId,
   currentBranchName,
@@ -1575,6 +1638,12 @@ function buildWorkspaceTerminalScopeKey(serverId: string, workspaceId: string): 
   return `${serverId}:${workspaceId}`;
 }
 
+function getFocusedWorkspacePaneId(
+  paneState: ReturnType<typeof deriveWorkspacePaneState>,
+): string | null {
+  return paneState.pane?.id ?? null;
+}
+
 interface WorkspaceTerminalTabActionsInput {
   persistenceKey: string | null;
   focusWorkspacePane: (workspaceKey: string, paneId: string) => void;
@@ -1645,6 +1714,73 @@ function useWorkspaceTerminalTabActions({
     handleTerminalCreateQueued,
     handleTerminalCreateFailed,
   };
+}
+
+interface WorkspaceUtilitySplitActionsInput {
+  isMobile: boolean;
+  persistenceKey: string | null;
+  targetPaneId: string | null;
+  splitWorkspacePaneEmpty: (
+    workspaceKey: string,
+    input: {
+      targetPaneId: string;
+      position: "left" | "right" | "top" | "bottom";
+    },
+  ) => string | null;
+  createTerminal: (input?: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  createBrowser: (input?: { paneId?: string }) => void;
+}
+
+function useWorkspaceUtilitySplitActions({
+  isMobile,
+  persistenceKey,
+  targetPaneId,
+  splitWorkspacePaneEmpty,
+  createTerminal,
+  createBrowser,
+}: WorkspaceUtilitySplitActionsInput) {
+  const createTerminalSplit = useCallback(() => {
+    openWorkspaceUtilitySplit({
+      workspaceKey: persistenceKey,
+      targetPaneId,
+      position: "bottom",
+      splitPaneEmpty: splitWorkspacePaneEmpty,
+      openInPane: (paneId) => createTerminal(paneId ? { paneId } : undefined),
+    });
+  }, [createTerminal, persistenceKey, splitWorkspacePaneEmpty, targetPaneId]);
+  const createTerminalProfileSplit = useCallback(
+    (profile: TerminalProfileInput) => {
+      openWorkspaceUtilitySplit({
+        workspaceKey: persistenceKey,
+        targetPaneId,
+        position: "bottom",
+        splitPaneEmpty: splitWorkspacePaneEmpty,
+        openInPane: (paneId) => createTerminal({ ...(paneId ? { paneId } : {}), profile }),
+      });
+    },
+    [createTerminal, persistenceKey, splitWorkspacePaneEmpty, targetPaneId],
+  );
+  const createBrowserSplit = useCallback(() => {
+    openWorkspaceUtilitySplit({
+      workspaceKey: persistenceKey,
+      targetPaneId,
+      position: "right",
+      splitPaneEmpty: splitWorkspacePaneEmpty,
+      openInPane: (paneId) => createBrowser(paneId ? { paneId } : undefined),
+    });
+  }, [createBrowser, persistenceKey, splitWorkspacePaneEmpty, targetPaneId]);
+
+  return isMobile
+    ? {
+        createTerminal,
+        createTerminalWithProfile: (profile: TerminalProfileInput) => createTerminal({ profile }),
+        createBrowser,
+      }
+    : {
+        createTerminal: createTerminalSplit,
+        createTerminalWithProfile: createTerminalProfileSplit,
+        createBrowser: createBrowserSplit,
+      };
 }
 
 function WorkspaceScreenContent({
@@ -2420,13 +2556,6 @@ function WorkspaceScreenContent({
 
   const handleCreateTerminal = useStableEvent(createTerminal);
 
-  const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
-      createTerminal({ profile });
-    },
-    [createTerminal],
-  );
-
   const handleCreateBrowserTab = useCallback(
     (input?: { paneId?: string }) => {
       if (!persistenceKey || !getIsElectron()) {
@@ -2440,6 +2569,15 @@ function WorkspaceScreenContent({
     },
     [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
   );
+
+  const workspaceUtilitySplitActions = useWorkspaceUtilitySplitActions({
+    isMobile,
+    persistenceKey,
+    targetPaneId: getFocusedWorkspacePaneId(focusedPaneTabState),
+    splitWorkspacePaneEmpty,
+    createTerminal: handleCreateTerminal,
+    createBrowser: handleCreateBrowserTab,
+  });
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
@@ -3257,10 +3395,22 @@ function WorkspaceScreenContent({
     gate: workspaceScreenGate,
     workspaceKey: persistenceKey,
   });
+  const createTerminalDisabled = useMemo(
+    () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
+    [createTerminalMutation.isPending, pendingTerminalCreateInput],
+  );
+  const showCreateBrowserTab = getIsElectron();
 
   const headerRight = useMemo(
     () => (
       <View style={styles.headerRight}>
+        <WorkspaceHeaderUtilityActions
+          isMobile={isMobile}
+          showBrowser={showCreateBrowserTab}
+          terminalDisabled={createTerminalDisabled}
+          onCreateTerminal={workspaceUtilitySplitActions.createTerminal}
+          onCreateBrowser={workspaceUtilitySplitActions.createBrowser}
+        />
         {!isMobile && workspaceDescriptor && workspaceDescriptor.scripts.length > 0 ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
@@ -3385,6 +3535,10 @@ function WorkspaceScreenContent({
     ),
     [
       isMobile,
+      createTerminalDisabled,
+      showCreateBrowserTab,
+      workspaceUtilitySplitActions.createTerminal,
+      workspaceUtilitySplitActions.createBrowser,
       workspaceDescriptor,
       normalizedServerId,
       normalizedWorkspaceId,
@@ -3413,11 +3567,6 @@ function WorkspaceScreenContent({
     () => shouldShowWorkspaceExplorerSidebar({ isRouteFocused, isFocusModeEnabled, isMobile }),
     [isRouteFocused, isFocusModeEnabled, isMobile],
   );
-  const createTerminalDisabled = useMemo(
-    () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
-    [createTerminalMutation.isPending, pendingTerminalCreateInput],
-  );
-  const showCreateBrowserTab = getIsElectron();
   const focusedPaneIdOrUndefined = useMemo(() => focusedPaneId ?? undefined, [focusedPaneId]);
   const desktopFocusModeEnabled = useMemo(
     () => isFocusModeEnabled && !isMobile,
@@ -3511,7 +3660,7 @@ function WorkspaceScreenContent({
           onRowLayout={onHeaderLayout}
           left={
             <>
-              <SidebarMenuToggle />
+              <SidebarMenuToggle mobileOnly />
               <WorkspaceHeaderTitleBar
                 isLoading={isWorkspaceHeaderLoading}
                 title={workspaceHeaderTitle}
@@ -3535,9 +3684,9 @@ function WorkspaceScreenContent({
                 menuCopyIcon={menuCopyIcon}
                 menuSettingsIcon={menuSettingsIcon}
                 onCreateDraftTab={handleCreateDraftTab}
-                onCreateTerminal={handleCreateTerminal}
-                onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
-                onCreateBrowser={handleCreateBrowserTab}
+                onCreateTerminal={workspaceUtilitySplitActions.createTerminal}
+                onCreateTerminalWithProfile={workspaceUtilitySplitActions.createTerminalWithProfile}
+                onCreateBrowser={workspaceUtilitySplitActions.createBrowser}
                 onOpenImportSheet={openImportSheet}
                 onCopyWorkspacePath={handleCopyWorkspacePath}
                 onCopyBranchName={handleCopyBranchName}
@@ -3576,6 +3725,7 @@ function WorkspaceScreenContent({
 
       {shouldRenderDesktopPaneFallback ? (
         <WorkspaceDesktopTabsRow
+          hidden
           paneId={focusedPaneIdOrUndefined}
           isFocused={isRouteFocused}
           tabs={desktopTabRowItems}
@@ -3669,7 +3819,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   containerWorkspaceBackground: {
-    backgroundColor: theme.colors.surfaceWorkspace,
+    // Flat, minimal: the workspace pane shares the app background (surface0) so
+    // the whole page reads as one surface — the same color as the sidebar panel.
+    backgroundColor: theme.colors.surface0,
   },
   threePaneRow: {
     flex: 1,

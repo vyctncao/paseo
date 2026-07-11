@@ -15,8 +15,8 @@ describe("petIdForProvider", () => {
     expect(petIdForProvider({ provider: "claude", petIds: [] })).toBeNull();
   });
 
-  it("always assigns an installed pet", () => {
-    for (const provider of ["claude", "codex", "opencode", "copilot", "pi"]) {
+  it("always assigns an installed pet to built-in and custom providers", () => {
+    for (const provider of ["claude", "codex", "opencode", "copilot", "pi", "omp", "custom-qwen"]) {
       expect(PETS).toContain(petIdForProvider({ provider, petIds: PETS }));
     }
   });

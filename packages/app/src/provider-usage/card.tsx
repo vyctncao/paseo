@@ -1,11 +1,12 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
+import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
 import { formatAgo } from "./format";
+import { getProviderUsageColors } from "./provider-colors";
 import type { ProviderUsage } from "./types";
 import { ProviderUsageWindowBar } from "./window-bar";
 
@@ -19,10 +20,6 @@ function ProviderUsageIcon({ iconKey, size, color = "" }: ProviderUsageIconProps
   const Icon = getProviderIcon(iconKey);
   return <Icon size={size} color={color} />;
 }
-
-const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
-
-const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function statusText(usage: ProviderUsage): string | null {
   if (usage.status === "available") return null;
@@ -40,14 +37,21 @@ function footerText(usage: ProviderUsage): string | null {
 export function ProviderUsageCard({
   usage,
   compact = false,
+  displayEnabled = true,
+  onDisplayEnabledChange,
 }: {
   usage: ProviderUsage;
   compact?: boolean;
+  displayEnabled?: boolean;
+  onDisplayEnabledChange?: (enabled: boolean) => void;
 }) {
+  const { theme } = useUnistyles();
   const status = statusText(usage);
   const footer = footerText(usage);
   const balances = usage.balances ?? [];
   const details = usage.details ?? [];
+  const providerColors = getProviderUsageColors(usage.providerId);
+  const iconColor = providerColors?.icon ?? theme.colors.foregroundMuted;
 
   const containerStyle = useMemo(
     () => [styles.container, compact ? styles.containerCompact : styles.containerPadded],
@@ -65,7 +69,7 @@ export function ProviderUsageCard({
   return (
     <View style={containerStyle}>
       <View style={styles.header}>
-        <ThemedProviderUsageIcon iconKey={usage.providerId} size={14} uniProps={mutedIconColor} />
+        <ProviderUsageIcon iconKey={usage.providerId} size={14} color={iconColor} />
         <Text style={styles.name} numberOfLines={1}>
           {usage.displayName}
         </Text>
@@ -77,26 +81,42 @@ export function ProviderUsageCard({
             <Text style={styles.statusLabel}>{status}</Text>
           </View>
         ) : null}
+        {onDisplayEnabledChange ? (
+          <Switch
+            value={displayEnabled}
+            onValueChange={onDisplayEnabledChange}
+            accessibilityLabel={`Display ${usage.displayName} in Plan Usage`}
+            testID={`provider-usage-display-${usage.providerId}`}
+          />
+        ) : null}
       </View>
 
-      {usage.error ? (
+      {displayEnabled && usage.error ? (
         <Text style={styles.error} numberOfLines={3}>
           {usage.error}
         </Text>
       ) : null}
 
-      {usage.windows.length > 0 || balances.length > 0 ? (
+      {displayEnabled && (usage.windows.length > 0 || balances.length > 0) ? (
         <View style={styles.bars}>
           {usage.windows.map((window) => (
-            <ProviderUsageWindowBar key={window.id} window={window} />
+            <ProviderUsageWindowBar
+              key={window.id}
+              window={window}
+              accentColor={providerColors?.bar}
+            />
           ))}
           {balances.map((balance) => (
-            <ProviderUsageBalanceBar key={balance.id} balance={balance} />
+            <ProviderUsageBalanceBar
+              key={balance.id}
+              balance={balance}
+              accentColor={providerColors?.bar}
+            />
           ))}
         </View>
       ) : null}
 
-      {details.length > 0 ? (
+      {displayEnabled && details.length > 0 ? (
         <View style={styles.details}>
           {details.map((detail) => (
             <View key={detail.id} style={styles.detailRow}>
@@ -111,7 +131,7 @@ export function ProviderUsageCard({
         </View>
       ) : null}
 
-      {footer ? (
+      {displayEnabled && footer ? (
         <Text style={styles.footer} numberOfLines={1}>
           {footer}
         </Text>

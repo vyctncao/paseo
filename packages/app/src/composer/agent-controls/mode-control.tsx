@@ -129,7 +129,10 @@ function AgentModeControlView({
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
   const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const iconColor = theme.colors.foregroundMuted;
+  const isDangerousMode = visuals?.colorTier === "dangerous";
+  const iconColor = isDangerousMode
+    ? theme.colors.palette.yellow[400]
+    : theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
   const allOptions = useMemo<ComboboxOption[]>(
@@ -199,14 +202,15 @@ function AgentModeControlView({
   const pressableStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType) => [
       styles.chip,
+      isDangerousMode && styles.chipDangerous,
       hovered && styles.chipHovered,
       (pressed || open) && styles.chipPressed,
       disabled && styles.chipDisabled,
     ],
-    [open, disabled],
+    [open, disabled, isDangerousMode],
   );
 
-  const labelStyle = styles.chipLabel;
+  const labelStyle = [styles.chipLabel, isDangerousMode && styles.chipLabelDangerous];
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
@@ -402,6 +406,9 @@ const styles = StyleSheet.create((theme) => ({
   chipHovered: {
     backgroundColor: theme.colors.surface2,
   },
+  chipDangerous: {
+    backgroundColor: theme.colors.surface3,
+  },
   chipPressed: {
     backgroundColor: theme.colors.surface0,
   },
@@ -412,6 +419,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  chipLabelDangerous: {
+    color: theme.colors.palette.yellow[400],
   },
   tooltipRow: {
     flexDirection: "row",

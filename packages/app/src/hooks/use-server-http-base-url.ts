@@ -1,7 +1,20 @@
 import { useMemo } from "react";
 import { useHosts } from "@/runtime/host-runtime";
-import type { HostProfile } from "@/types/host-connection";
+import type { DirectTcpHostConnection, HostProfile } from "@/types/host-connection";
 import { buildDaemonWebSocketUrl } from "@/utils/daemon-endpoints";
+
+function directTcpConnectionForHttp(
+  host: HostProfile | undefined,
+): DirectTcpHostConnection | undefined {
+  if (!host) return undefined;
+  const preferred = host.preferredConnectionId
+    ? host.connections.find((connection) => connection.id === host.preferredConnectionId)
+    : undefined;
+  if (preferred?.type === "directTcp") return preferred;
+  return host.connections.find(
+    (connection): connection is DirectTcpHostConnection => connection.type === "directTcp",
+  );
+}
 
 /**
  * The `http(s)://` origin of a host's daemon, derived from its direct-TCP WebSocket
@@ -16,7 +29,7 @@ import { buildDaemonWebSocketUrl } from "@/utils/daemon-endpoints";
  * and embedding them in an image URL would leak them into the view hierarchy.
  */
 export function serverHttpBaseUrl(host: HostProfile | undefined): string | null {
-  const connection = host?.connections.find((conn) => conn.type === "directTcp");
+  const connection = directTcpConnectionForHttp(host);
   if (!connection) return null;
 
   try {
@@ -30,10 +43,25 @@ export function serverHttpBaseUrl(host: HostProfile | undefined): string | null 
   }
 }
 
+/** Bearer header for REST calls to a password-protected direct daemon. */
+export function serverHttpAuthorizationHeader(host: HostProfile | undefined): string | null {
+  const connection = directTcpConnectionForHttp(host);
+  const password = connection?.password?.trim();
+  return password ? `Bearer ${password}` : null;
+}
+
 export function useServerHttpBaseUrl(serverId: string | null): string | null {
   const hosts = useHosts();
   return useMemo(() => {
     if (!serverId) return null;
     return serverHttpBaseUrl(hosts.find((host) => host.serverId === serverId));
+  }, [hosts, serverId]);
+}
+
+export function useServerHttpAuthorizationHeader(serverId: string | null): string | null {
+  const hosts = useHosts();
+  return useMemo(() => {
+    if (!serverId) return null;
+    return serverHttpAuthorizationHeader(hosts.find((host) => host.serverId === serverId));
   }, [hosts, serverId]);
 }

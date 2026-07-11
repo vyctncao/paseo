@@ -22,6 +22,7 @@ interface SavedSettingsHostInput {
 const SECTION_LABELS = {
   general: "General",
   appearance: "Appearance",
+  pets: "Pets",
   shortcuts: "Shortcuts",
   integrations: "Integrations",
   permissions: "Permissions",

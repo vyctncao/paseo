@@ -423,11 +423,11 @@ export function ContextMenuContent({
     () => [
       styles.sheetBackground,
       {
-        backgroundColor: theme.colors.surface0,
+        backgroundColor: theme.colors.surfaceOverlay,
         borderColor: theme.colors.border,
       },
     ],
-    [theme.colors.surface0, theme.colors.border],
+    [theme.colors.surfaceOverlay, theme.colors.border],
   );
   const sheetHandleStyle = useMemo(
     () => [styles.sheetHandle, { backgroundColor: theme.colors.surface2 }],
@@ -812,7 +812,7 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
   },
   content: {
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceOverlay,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
@@ -820,7 +820,7 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   sheetBackground: {
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceOverlay,
     borderTopLeftRadius: theme.borderRadius.xl,
     borderTopRightRadius: theme.borderRadius.xl,
     borderWidth: 1,

@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react-native";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Alert } from "@/components/ui/alert";
@@ -9,6 +9,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { providerUsageCopy } from "./copy";
 import { ProviderUsageList } from "./list";
 import type { ProviderUsageView } from "./types";
+import { useProviderUsageVisibility } from "./use-provider-usage-visibility";
 
 export function ProviderUsageSettingsSection({
   view,
@@ -17,7 +18,14 @@ export function ProviderUsageSettingsSection({
   view: ProviderUsageView;
   onRefresh: () => void;
 }) {
+  const { hiddenProviderIdSet, setProviderVisible } = useProviderUsageVisibility();
   const busy = view.kind === "loading" || (view.kind === "ready" && view.isRefreshing);
+  const handleProviderVisibilityChange = useCallback(
+    (providerId: string, visible: boolean) => {
+      void setProviderVisible(providerId, visible);
+    },
+    [setProviderVisible],
+  );
 
   const refreshButton = useMemo(
     () => (
@@ -41,7 +49,12 @@ export function ProviderUsageSettingsSection({
       testID="provider-usage-card"
       trailing={refreshButton}
     >
-      <ProviderUsageBody view={view} onRefresh={onRefresh} />
+      <ProviderUsageBody
+        view={view}
+        onRefresh={onRefresh}
+        hiddenProviderIds={hiddenProviderIdSet}
+        onProviderVisibilityChange={handleProviderVisibilityChange}
+      />
     </SettingsSection>
   );
 }
@@ -49,9 +62,13 @@ export function ProviderUsageSettingsSection({
 function ProviderUsageBody({
   view,
   onRefresh,
+  hiddenProviderIds,
+  onProviderVisibilityChange,
 }: {
   view: ProviderUsageView;
   onRefresh: () => void;
+  hiddenProviderIds: ReadonlySet<string>;
+  onProviderVisibilityChange: (providerId: string, visible: boolean) => void;
 }) {
   if (view.kind === "loading") {
     return (
@@ -79,7 +96,13 @@ function ProviderUsageBody({
     );
   }
 
-  return <ProviderUsageList providers={view.payload.providers} />;
+  return (
+    <ProviderUsageList
+      providers={view.payload.providers}
+      hiddenProviderIds={hiddenProviderIds}
+      onProviderVisibilityChange={onProviderVisibilityChange}
+    />
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({

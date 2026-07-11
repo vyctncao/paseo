@@ -1,6 +1,11 @@
 import "@/styles/unistyles";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
+import {
+  DarkTheme as NavigationDarkTheme,
+  DefaultTheme as NavigationDefaultTheme,
+  ThemeProvider as NavigationThemeProvider,
+} from "@react-navigation/native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
@@ -34,6 +39,7 @@ import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { LeftSidebar } from "@/components/left-sidebar";
+import { OnScreenPet } from "@/components/pet/on-screen-pet";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -77,9 +83,11 @@ import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-acti
 import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-action";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { KeyboardShiftProvider } from "@/hooks/use-keyboard-shift-style";
 import { useCompactWebViewportZoomLock } from "@/hooks/use-compact-web-viewport-zoom-lock";
 import { useOpenProject } from "@/hooks/use-open-project";
+import { serverHttpBaseUrl } from "@/hooks/use-server-http-base-url";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { I18nProvider } from "@/i18n/provider";
@@ -98,6 +106,7 @@ import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { usePanelStore } from "@/stores/panel-store";
 import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import { AppBackdrop } from "@/components/backdrop-scene";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
@@ -424,12 +433,33 @@ const THEME_CYCLE_ORDER: ThemeName[] = [
   "light",
 ];
 
+function resolveOnScreenPetShellConfig(input: {
+  assetServerId: string;
+  isCompactLayout: boolean;
+  pathname: string;
+  isDesktopFileExplorerOpen: boolean;
+  isFocusModeEnabled: boolean;
+  explorerWidth: number;
+}): { serverId: string; visible: boolean; rightOffset: number } {
+  const avoidExplorer =
+    !input.isCompactLayout &&
+    input.pathname.includes("/workspace/") &&
+    input.isDesktopFileExplorerOpen &&
+    !input.isFocusModeEnabled;
+  return {
+    serverId: input.assetServerId,
+    visible: input.assetServerId.length > 0,
+    rightOffset: avoidExplorer ? input.explorerWidth : 0,
+  };
+}
+
 function AppContainer({
   children,
   selectedAgentId,
   chromeEnabled: chromeEnabledOverride,
 }: AppContainerProps) {
   const daemons = useHosts();
+  const localServerId = useLocalDaemonServerId();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
   const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
@@ -438,6 +468,8 @@ function AppContainer({
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
+  const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const explorerWidth = usePanelStore((state) => state.explorerWidth);
 
   const cycleTheme = useCallback(() => {
     const currentIndex = THEME_CYCLE_ORDER.indexOf(settings.theme as ThemeName);
@@ -448,7 +480,23 @@ function AppContainer({
   const isCompactLayout = useIsCompactFormFactor();
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
+  const petAssetServerId = useMemo(
+    () =>
+      daemons.find((host) => host.serverId === localServerId && serverHttpBaseUrl(host) !== null)
+        ?.serverId ??
+      daemons.find((host) => serverHttpBaseUrl(host) !== null)?.serverId ??
+      "",
+    [daemons, localServerId],
+  );
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
+  const onScreenPetConfig = resolveOnScreenPetShellConfig({
+    assetServerId: petAssetServerId,
+    isCompactLayout,
+    pathname,
+    isDesktopFileExplorerOpen,
+    isFocusModeEnabled,
+    explorerWidth,
+  });
   const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
   const toggleDesktopSidebars = useCallback(() => {
     const { desktop } = usePanelStore.getState();
@@ -503,6 +551,11 @@ function AppContainer({
   const content = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
+      <OnScreenPet
+        serverId={onScreenPetConfig.serverId}
+        visible={onScreenPetConfig.visible}
+        rightOffset={onScreenPetConfig.rightOffset}
+      />
       <FloatingPanelPortalHost />
       {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
@@ -712,7 +765,8 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
 function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   const { theme } = useUnistyles();
-  const surface0 = theme.colors.surface0;
+  // Glass themes have a translucent surface0; the overlay needs an opaque color.
+  const surface0 = theme.backdrop?.base ?? theme.colors.surface0;
   const foreground = theme.colors.foreground;
 
   useEffect(() => {
@@ -948,25 +1002,41 @@ function RootStack() {
     }),
     [theme.colors.surface0],
   );
+  // Without an explicit navigation theme, react-navigation paints its root with the
+  // DefaultTheme background (#f2f2f2). Opaque themes cover it, but glass themes have
+  // a translucent surface0 and need the navigator to stay transparent so the
+  // backdrop scene behind the app shows through.
+  const navigationTheme = useMemo(() => {
+    const base = theme.colorScheme === "light" ? NavigationDefaultTheme : NavigationDarkTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: theme.backdrop ? "transparent" : theme.colors.surface0,
+      },
+    };
+  }, [theme.backdrop, theme.colorScheme, theme.colors.surface0]);
   return (
-    <Stack screenOptions={stackScreenOptions}>
-      <Stack.Screen name="index" />
-      <Stack.Protected guard={storeReady}>
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="settings/index" />
-        <Stack.Screen name="settings/[section]" />
-        <Stack.Screen name="settings/projects/index" />
-        <Stack.Screen name="settings/projects/[projectKey]" />
-        <Stack.Screen name="new" />
-        <Stack.Screen name="open-project" />
-        <Stack.Screen name="sessions" />
-        <Stack.Screen name="schedules" />
-        <Stack.Screen name="pair-scan" />
-      </Stack.Protected>
-      <Stack.Screen name="h/[serverId]" />
-      <Stack.Screen name="settings/hosts/[serverId]/index" />
-      <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
-    </Stack>
+    <NavigationThemeProvider value={navigationTheme}>
+      <Stack screenOptions={stackScreenOptions}>
+        <Stack.Screen name="index" />
+        <Stack.Protected guard={storeReady}>
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="settings/index" />
+          <Stack.Screen name="settings/[section]" />
+          <Stack.Screen name="settings/projects/index" />
+          <Stack.Screen name="settings/projects/[projectKey]" />
+          <Stack.Screen name="new" />
+          <Stack.Screen name="open-project" />
+          <Stack.Screen name="sessions" />
+          <Stack.Screen name="schedules" />
+          <Stack.Screen name="pair-scan" />
+        </Stack.Protected>
+        <Stack.Screen name="h/[serverId]" />
+        <Stack.Screen name="settings/hosts/[serverId]/index" />
+        <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
+      </Stack>
+    </NavigationThemeProvider>
   );
 }
 
@@ -1030,7 +1100,8 @@ function RootProviders({ children }: { children: ReactNode }) {
 function RootAppTree() {
   return (
     <GestureHandlerRootView style={flexStyle}>
-      <View style={layoutStyles.surfaceFill}>
+      <View style={layoutStyles.rootFill}>
+        <AppBackdrop />
         <RootProviders>
           <RuntimeProviders>
             <AppShell />
@@ -1057,5 +1128,14 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  // Root-only fill behind the backdrop scene. Glass themes keep surface0
+  // translucent, so the root anchors on the opaque scene base instead — nothing
+  // behind the app (native window color) may show through. Must stay a distinct
+  // style from surfaceFill: identical style values share one CSS class on web, and
+  // the inner surfaceFill layer would otherwise turn opaque and cover the scene.
+  rootFill: {
+    flex: 1,
+    backgroundColor: theme.backdrop?.base ?? theme.colors.surface0,
   },
 }));

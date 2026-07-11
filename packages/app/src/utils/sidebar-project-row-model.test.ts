@@ -4,8 +4,10 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import {
+  buildSidebarProjectChildrenModel,
   buildSidebarProjectRowModel,
   resolveSidebarProjectIconTarget,
+  splitStandaloneTasksFromProjects,
 } from "./sidebar-project-row-model";
 
 function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorkspaceEntry {
@@ -48,6 +50,29 @@ function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEn
     ...overrides,
   };
 }
+
+describe("standalone task grouping", () => {
+  it("removes the synthetic project and returns its workspaces as tasks", () => {
+    const regularProject = project();
+    const taskWorkspace = workspace({
+      workspaceKey: "srv:task",
+      workspaceId: "task",
+      projectKey: "paseo:standalone-tasks",
+      projectName: "Tasks",
+    });
+    const tasksProject = project({
+      projectKey: "paseo:standalone-tasks",
+      projectName: "Tasks",
+      projectKind: "non_git",
+      workspaces: [taskWorkspace],
+    });
+
+    expect(splitStandaloneTasksFromProjects([regularProject, tasksProject])).toEqual({
+      projects: [regularProject],
+      taskWorkspaces: [taskWorkspace],
+    });
+  });
+});
 
 describe("buildSidebarProjectRowModel", () => {
   it("renders a non-git single-workspace project as an expandable section", () => {
@@ -209,6 +234,36 @@ describe("buildSidebarProjectRowModel", () => {
         kind: "new_workspace",
         target: { serverId: "srv", iconWorkingDir: "/repo" },
       },
+    });
+  });
+});
+
+describe("buildSidebarProjectChildrenModel", () => {
+  it("places a sole workspace's chats directly beneath the project", () => {
+    const onlyWorkspace = workspace({ workspaceId: "ws-only", name: "paseo" });
+
+    expect(buildSidebarProjectChildrenModel(project({ workspaces: [onlyWorkspace] }))).toEqual({
+      kind: "direct_chats",
+      workspace: onlyWorkspace,
+    });
+  });
+
+  it("keeps workspace rows when a project has multiple workspaces", () => {
+    expect(
+      buildSidebarProjectChildrenModel(
+        project({
+          workspaces: [
+            workspace({ workspaceId: "ws-main" }),
+            workspace({ workspaceId: "ws-feature", workspaceKind: "worktree" }),
+          ],
+        }),
+      ),
+    ).toEqual({ kind: "workspace_rows" });
+  });
+
+  it("leaves an empty project available for its new-workspace row", () => {
+    expect(buildSidebarProjectChildrenModel(project({ workspaces: [] }))).toEqual({
+      kind: "workspace_rows",
     });
   });
 });

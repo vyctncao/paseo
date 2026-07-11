@@ -2,7 +2,8 @@ import type { AgentPetLifecycle } from "@/components/pet/pet-sprite";
 
 /**
  * Groups a workspace's open chats into the rows the sidebar renders beneath their
- * branch, replacing the desktop tab strip as the way to find and switch chats.
+ * branch. A lone chat is omitted because the workspace row already opens it; nested
+ * rows are only needed when there are multiple chats to switch between.
  *
  * This is deliberately a pure projection over data the workspace already has. Row
  * activation calls the layout store's existing `focusTab`, the same action the tab
@@ -42,7 +43,7 @@ export interface SidebarWorkspaceGroup {
   /** Branch when present, else the workspace's display name. */
   label: string;
   isCollapsed: boolean;
-  /** Empty when collapsed — the caller renders nothing rather than hidden rows. */
+  /** Empty when collapsed or when the workspace has only one chat. */
   rows: SidebarAgentRow[];
   /** Always the true count, even while collapsed. */
   agentCount: number;
@@ -80,8 +81,10 @@ export function buildSidebarWorkspaceGroup(input: {
   workspace: SidebarWorkspaceGroupInput;
   activeTabId: string | null;
   collapsedWorkspaceIds: ReadonlySet<string>;
+  /** Project-level chat lists have no workspace row to represent a lone remaining chat. */
+  showLoneChat?: boolean;
 }): SidebarWorkspaceGroup {
-  const { workspace, activeTabId, collapsedWorkspaceIds } = input;
+  const { workspace, activeTabId, collapsedWorkspaceIds, showLoneChat = false } = input;
   const isCollapsed = collapsedWorkspaceIds.has(workspace.workspaceId);
 
   const sorted = [...workspace.agents].sort((left, right) => {
@@ -95,7 +98,10 @@ export function buildSidebarWorkspaceGroup(input: {
     workspaceId: workspace.workspaceId,
     label: workspace.branch ?? workspace.displayName,
     isCollapsed,
-    rows: isCollapsed ? [] : sorted.map((agent) => toSidebarAgentRow(agent, activeTabId)),
+    rows:
+      isCollapsed || (!showLoneChat && sorted.length <= 1)
+        ? []
+        : sorted.map((agent) => toSidebarAgentRow(agent, activeTabId)),
     agentCount: workspace.agents.length,
     hasAttention: workspace.agents.some((agent) => lifecycleNeedsAttention(agent.lifecycle)),
   };

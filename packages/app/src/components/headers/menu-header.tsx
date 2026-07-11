@@ -21,6 +21,8 @@ interface SidebarMenuToggleProps {
   tooltipSide?: "left" | "right" | "top" | "bottom";
   testID?: string;
   nativeID?: string;
+  /** Main content headers need this control only on compact/mobile layouts. */
+  mobileOnly?: boolean;
 }
 
 const MOBILE_MENU_LINE_WIDTH = 16;
@@ -47,6 +49,7 @@ export function SidebarMenuToggle({
   tooltipSide = "right",
   testID = "menu-button",
   nativeID = "menu-button",
+  mobileOnly = false,
 }: SidebarMenuToggleProps = {}) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -66,6 +69,10 @@ export function SidebarMenuToggle({
   }, [toggleAgentListForLayout, isMobile]);
 
   const accessibilityState = useMemo(() => ({ expanded: isOpen }), [isOpen]);
+
+  if (mobileOnly && !isMobile) {
+    return null;
+  }
 
   return (
     <HeaderToggleButton
@@ -95,7 +102,7 @@ export function MenuHeader({ title, rightContent, borderless }: MenuHeaderProps)
     <ScreenHeader
       left={
         <>
-          <SidebarMenuToggle />
+          <SidebarMenuToggle mobileOnly />
           {title && <ScreenTitle>{title}</ScreenTitle>}
         </>
       }

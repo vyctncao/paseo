@@ -1,12 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Image, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Image } from "expo-image";
+import { View } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import {
   PET_CELL_HEIGHT,
   PET_CELL_WIDTH,
-  PET_FRAME_DURATION_MS,
   PET_FRAMES_PER_ROW,
   PET_WAVE_DURATION_MS,
+  petFrameCount,
+  petFrameDurationMs,
   petFrameRect,
   petStateForLifecycle,
   type AgentPetLifecycle,
@@ -21,6 +24,8 @@ export interface AgentPetProps {
   /** Rendered edge length in px. The 192x208 cell is scaled to fit. */
   size?: number;
   accessibilityLabel?: string;
+  /** Optional bearer header for pets served by a protected direct daemon. */
+  authorizationHeader?: string | null;
 }
 
 /**
@@ -30,13 +35,10 @@ export interface AgentPetProps {
  */
 function useSettlingPetState(lifecycle: AgentPetLifecycle): PetState {
   const [state, setState] = useState<PetState>(() => petStateForLifecycle(lifecycle));
-  const previous = useRef(lifecycle);
 
   useEffect(() => {
-    const justFinished = previous.current !== "completed" && lifecycle === "completed";
-    previous.current = lifecycle;
     setState(petStateForLifecycle(lifecycle));
-    if (!justFinished) return undefined;
+    if (lifecycle !== "completed") return undefined;
 
     const timer = setTimeout(() => setState("idle"), PET_WAVE_DURATION_MS);
     return () => clearTimeout(timer);
@@ -45,21 +47,35 @@ function useSettlingPetState(lifecycle: AgentPetLifecycle): PetState {
   return state;
 }
 
-/** Advances the frame counter only while the state actually animates. */
-function useFrameCounter(animating: boolean): number {
+/** Advances each state with its contract frame count and per-frame timing. */
+function useFrameCounter(state: PetState, reducedMotion: boolean): number {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
-    if (!animating) {
-      setFrame(0);
-      return undefined;
-    }
-    const timer = setInterval(
-      () => setFrame((current) => (current + 1) % PET_FRAMES_PER_ROW),
-      PET_FRAME_DURATION_MS,
-    );
-    return () => clearInterval(timer);
-  }, [animating]);
+    setFrame(0);
+    if (reducedMotion) return undefined;
+
+    let disposed = false;
+    let current = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNext = () => {
+      timer = setTimeout(
+        () => {
+          if (disposed) return;
+          current = (current + 1) % petFrameCount(state);
+          setFrame(current);
+          scheduleNext();
+        },
+        petFrameDurationMs(state, current),
+      );
+    };
+    scheduleNext();
+
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [reducedMotion, state]);
 
   return frame;
 }
@@ -70,12 +86,20 @@ export function AgentPet({
   lifecycle,
   size = 48,
   accessibilityLabel,
+  authorizationHeader,
 }: AgentPetProps) {
   const state = useSettlingPetState(lifecycle);
-  const frame = useFrameCounter(state !== "idle");
+  const reducedMotion = useReducedMotion();
+  const frame = useFrameCounter(state, reducedMotion);
   const rect = petFrameRect(state, frame, rows);
   const scale = size / PET_CELL_WIDTH;
-  const source = useMemo(() => ({ uri: spritesheetUrl }), [spritesheetUrl]);
+  const source = useMemo(
+    () => ({
+      uri: spritesheetUrl,
+      ...(authorizationHeader ? { headers: { Authorization: authorizationHeader } } : {}),
+    }),
+    [authorizationHeader, spritesheetUrl],
+  );
 
   // The full sheet is laid out at scaled size and positioned so the wanted cell
   // sits at the window's origin; the window clips the rest. Absolute offsets,
@@ -101,7 +125,7 @@ export function AgentPet({
       accessibilityLabel={accessibilityLabel ?? `Agent pet: ${state}`}
       testID="agent-pet"
     >
-      <Image source={source} style={sheetStyle} resizeMode="stretch" fadeDuration={0} />
+      <Image source={source} style={sheetStyle} contentFit="fill" transition={0} />
     </View>
   );
 }

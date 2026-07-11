@@ -6,41 +6,42 @@ import type { AgentPetLifecycle } from "./pet-sprite";
  *
  * The two vocabularies deliberately do not match. `AgentLifecycleStatus` is only
  * `initializing | idle | running | error | closed` — it has no "waiting on you" and
- * no "just finished". Those arrive on a separate channel, `attentionReason`, and
- * without folding it in the pet can never reach its `waiting` or `waving` states.
- * "Waving when the agent is done" is the whole point of the pet, so attention wins
- * over status wherever the two disagree.
+ * no "just finished". Pending permissions and `attentionReason` carry those more
+ * specific signals, and without folding them in the pet can never reliably reach
+ * its `waiting` or `waving` states. A fresh run still outranks stale completion
+ * attention left from the previous turn.
  */
 export interface AgentPetLifecycleInput {
   status: AgentLifecycleStatus;
+  pendingPermissionCount?: number;
   attentionReason?: "finished" | "error" | "permission" | null;
 }
 
 export function agentPetLifecycle(input: AgentPetLifecycleInput): AgentPetLifecycle {
-  // Attention is the newer, more specific signal: an agent that finished is still
-  // `idle` by status, and one awaiting a permission prompt is still `running`.
-  switch (input.attentionReason) {
-    case "permission":
-      return "needs_input";
-    case "finished":
-      return "completed";
-    case "error":
-      return "error";
-    default:
-      break;
+  // Pending permissions are the canonical live signal. `attentionReason: permission`
+  // remains accepted for snapshots produced by older daemons.
+  if ((input.pendingPermissionCount ?? 0) > 0 || input.attentionReason === "permission") {
+    return "needs_input";
   }
 
-  switch (input.status) {
-    case "running":
-      return "running";
-    case "error":
-      return "error";
-    // Startup is work the user is waiting on, but it is not yet the agent running
-    // its own loop — `thinking` is the sprite state that reads as "spinning up".
-    case "initializing":
-      return "thinking";
-    case "idle":
-    case "closed":
-      return "idle";
+  if (input.status === "error" || input.attentionReason === "error") {
+    return "error";
   }
+
+  // A fresh run outranks unread completion attention left from the previous turn.
+  if (input.status === "running") {
+    return "running";
+  }
+
+  // Startup is work the user is waiting on, but it is not yet the agent running
+  // its own loop — `thinking` is the sprite state that reads as "spinning up".
+  if (input.status === "initializing") {
+    return "thinking";
+  }
+
+  if (input.attentionReason === "finished") {
+    return "completed";
+  }
+
+  return "idle";
 }

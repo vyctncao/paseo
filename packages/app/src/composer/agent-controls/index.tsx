@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -20,7 +19,7 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
-import { Brain, ListTodo, Settings2, ShieldCheck, Zap } from "lucide-react-native";
+import { ListTodo, Settings2, ShieldCheck, Zap } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -40,8 +39,9 @@ import {
   useFormPreferences,
 } from "@/hooks/use-form-preferences";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { DraftAgentModeControl, AgentModeControl } from "@/composer/agent-controls/mode-control";
+import { ThinkingEffortSlider } from "@/composer/agent-controls/thinking-effort-slider";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
@@ -125,6 +125,7 @@ export interface DraftAgentControlsProps {
   disabled?: boolean;
   modelSelectorServerId?: string | null;
   isCompactLayout?: boolean;
+  showModeControl?: boolean;
 }
 
 interface AgentControlsProps {
@@ -132,6 +133,7 @@ interface AgentControlsProps {
   serverId: string;
   onDropdownClose?: () => void;
   isCompactLayout?: boolean;
+  showModeControl?: boolean;
 }
 
 function findOptionLabel(
@@ -413,7 +415,6 @@ function ControlledAgentControls({
   modelSelectorServerId = null,
   isCompactLayout,
 }: ControlledAgentControlsProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
@@ -471,19 +472,6 @@ function ControlledAgentControls({
   const comboboxThinkingOptions = useMemo<ComboboxOption[]>(
     () => toComboboxOptions(formattedThinkingOptions),
     [formattedThinkingOptions],
-  );
-
-  const renderThinkingOption = useCallback(
-    (args: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => (
-      <ThinkingComboboxOption
-        option={args.option}
-        selected={args.selected}
-        active={args.active}
-        onPress={args.onPress}
-        iconColor={theme.colors.foreground}
-      />
-    ),
-    [theme.colors.foreground],
   );
 
   const handleOpenChange = useCallback(
@@ -619,7 +607,6 @@ function ControlledAgentControls({
           handleProviderOpenChange={handleProviderOpenChange}
           handleThinkingOpenChange={handleThinkingOpenChange}
           handleOpenChange={handleOpenChange}
-          renderThinkingOption={renderThinkingOption}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
         />
@@ -649,9 +636,9 @@ function ControlledAgentControls({
           handleOpenSheet={handleOpenSheet}
           handleCloseSheet={handleCloseSheet}
           handleSheetModelSelect={handleSheetModelSelect}
+          handleThinkingSelect={handleThinkingSelect}
           handleSelectThinkingAndClose={handleSelectThinkingAndClose}
           handleOpenChange={handleOpenChange}
-          renderThinkingOption={renderThinkingOption}
           modelSelectorServerId={modelSelectorServerId}
         />
       )}
@@ -699,12 +686,6 @@ interface DesktopAgentControlsContentProps {
   handleProviderOpenChange: (open: boolean) => void;
   handleThinkingOpenChange: (open: boolean) => void;
   handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
-  renderThinkingOption: (args: {
-    option: ComboboxOption;
-    selected: boolean;
-    active: boolean;
-    onPress: () => void;
-  }) => ReactElement;
   extras?: ReactNode;
   modelSelectorServerId: string | null;
 }
@@ -753,7 +734,6 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     handleProviderOpenChange,
     handleThinkingOpenChange,
     handleOpenChange,
-    renderThinkingOption,
     extras,
     modelSelectorServerId,
   } = props;
@@ -832,7 +812,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 })}
                 testID="agent-thinking-selector"
               >
-                <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                <Zap
+                  size={theme.iconSize.md}
+                  color={theme.colors.foregroundMuted}
+                  fill={theme.colors.foregroundMuted}
+                />
                 <Text style={styles.modeBadgeText}>{displayThinking}</Text>
               </ComboboxTrigger>
             </TooltipTrigger>
@@ -844,13 +828,24 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             options={comboboxThinkingOptions}
             value={selectedThinkingOptionId ?? ""}
             onSelect={handleThinkingSelect}
-            searchable={comboboxThinkingOptions.length > DESKTOP_SEARCH_THRESHOLD}
+            searchable={false}
+            title={t("agentControls.thinking.title")}
             open={openSelector === "thinking"}
             onOpenChange={handleThinkingOpenChange}
             anchorRef={thinkingAnchorRef}
             desktopPlacement="top-start"
-            renderOption={renderThinkingOption}
-          />
+            desktopMinWidth={264}
+            desktopFixedHeight={104}
+            mobileChildrenScrollEnabled={false}
+          >
+            <ThinkingEffortSlider
+              options={thinkingOptions}
+              selectedOptionId={selectedThinkingOptionId}
+              onSelect={handleThinkingSelect}
+              disabled={disabled || !canSelectThinking}
+              title={t("agentControls.thinking.title")}
+            />
+          </Combobox>
         </>
       ) : null}
 
@@ -895,14 +890,9 @@ interface SheetAgentControlsContentProps {
   handleOpenSheet: (sheet: Exclude<ActiveSheet, null>) => void;
   handleCloseSheet: () => void;
   handleSheetModelSelect: (providerId: string, modelId: string) => void;
+  handleThinkingSelect: (thinkingOptionId: string) => void;
   handleSelectThinkingAndClose: (thinkingOptionId: string) => void;
   handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
-  renderThinkingOption: (args: {
-    option: ComboboxOption;
-    selected: boolean;
-    active: boolean;
-    onPress: () => void;
-  }) => ReactElement;
   modelSelectorServerId: string | null;
 }
 
@@ -934,9 +924,9 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     handleOpenSheet,
     handleCloseSheet,
     handleSheetModelSelect,
+    handleThinkingSelect,
     handleSelectThinkingAndClose,
     handleOpenChange,
-    renderThinkingOption,
     modelSelectorServerId,
   } = props;
 
@@ -1029,7 +1019,11 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           accessibilityLabel={t("agentControls.thinking.select")}
           testID="agent-controls-thinking"
         >
-          <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          <Zap
+            size={theme.iconSize.md}
+            color={theme.colors.foregroundMuted}
+            fill={theme.colors.foregroundMuted}
+          />
         </Pressable>
       ) : null}
 
@@ -1056,8 +1050,16 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           open={activeSheet === "thinking"}
           onOpenChange={handleThinkingSheetOpenChange}
           anchorRef={thinkingAnchorRef}
-          renderOption={renderThinkingOption}
-        />
+          mobileChildrenScrollEnabled={false}
+        >
+          <ThinkingEffortSlider
+            options={comboboxThinkingOptions}
+            selectedOptionId={selectedThinkingOptionId}
+            onSelect={handleThinkingSelect}
+            disabled={disabled || !canSelectThinking}
+            title={t("agentControls.thinking.title")}
+          />
+        </Combobox>
       ) : null}
 
       <AdaptiveModalSheet
@@ -1334,36 +1336,12 @@ function FeatureOptionMenuItem({
   );
 }
 
-function ThinkingComboboxOption({
-  option,
-  selected,
-  active,
-  onPress,
-  iconColor,
-}: {
-  option: ComboboxOption;
-  selected: boolean;
-  active: boolean;
-  onPress: () => void;
-  iconColor: string;
-}) {
-  const leadingSlot = useMemo(() => <Brain size={16} color={iconColor} />, [iconColor]);
-  return (
-    <ComboboxItem
-      label={option.label}
-      selected={selected}
-      active={active}
-      onPress={onPress}
-      leadingSlot={leadingSlot}
-    />
-  );
-}
-
 export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
   onDropdownClose,
   isCompactLayout,
+  showModeControl = true,
 }: AgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
@@ -1540,15 +1518,16 @@ export const AgentControls = memo(function AgentControls({
   );
 
   const modeChip = useMemo(
-    () => (
-      <AgentModeControl
-        serverId={serverId}
-        agentId={agentId}
-        placement="toolbar"
-        isCompactLayout={isCompactLayout}
-      />
-    ),
-    [serverId, agentId, isCompactLayout],
+    () =>
+      showModeControl ? (
+        <AgentModeControl
+          serverId={serverId}
+          agentId={agentId}
+          placement="toolbar"
+          isCompactLayout={isCompactLayout}
+        />
+      ) : null,
+    [serverId, agentId, isCompactLayout, showModeControl],
   );
 
   if (!agent) {
@@ -1608,6 +1587,7 @@ export function DraftAgentControls({
   disabled = false,
   modelSelectorServerId = null,
   isCompactLayout,
+  showModeControl = true,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1648,18 +1628,19 @@ export function DraftAgentControls({
   );
 
   const draftModeChip = useMemo(
-    () => (
-      <DraftAgentModeControl
-        placement="toolbar"
-        selectedProvider={selectedProvider}
-        providerDefinitions={providerDefinitions}
-        modeOptions={modeOptions}
-        selectedMode={selectedMode}
-        onSelectMode={onSelectMode}
-        disabled={disabled}
-        isCompactLayout={isCompactLayout}
-      />
-    ),
+    () =>
+      showModeControl ? (
+        <DraftAgentModeControl
+          placement="toolbar"
+          selectedProvider={selectedProvider}
+          providerDefinitions={providerDefinitions}
+          modeOptions={modeOptions}
+          selectedMode={selectedMode}
+          onSelectMode={onSelectMode}
+          disabled={disabled}
+          isCompactLayout={isCompactLayout}
+        />
+      ) : null,
     [
       selectedProvider,
       providerDefinitions,
@@ -1668,6 +1649,7 @@ export function DraftAgentControls({
       onSelectMode,
       disabled,
       isCompactLayout,
+      showModeControl,
     ],
   );
 
