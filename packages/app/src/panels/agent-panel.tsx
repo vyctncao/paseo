@@ -14,7 +14,6 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
-import { pickAndPersistImages } from "@/composer/actions";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -24,14 +23,12 @@ import {
   type ToastApi,
   type ToastState,
 } from "@/components/toast-host";
-import type { AttachmentMetadata, WorkspaceComposerAttachment } from "@/attachments/types";
-import { persistAttachmentFromBlob, persistAttachmentFromFileUri } from "@/attachments/service";
+import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
-import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
@@ -47,8 +44,6 @@ import {
   clearHistorySyncErrorAfterSuccessfulSync,
   reconcileMissingAgentStateWithPresentAgent,
 } from "@/panels/agent-panel-load-state";
-import { AgentContextPanel } from "@/panels/agent-context-panel";
-import { shouldShowAgentContextPanel } from "@/panels/agent-context-panel-visibility";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
@@ -70,7 +65,7 @@ import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
-import { collectAllPanes, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
@@ -435,15 +430,6 @@ export function useDraftPanelDescriptor(
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const EMPTY_PENDING_PERMISSIONS = new Map<string, PendingPermission>();
 const EMPTY_PENDING_PERMISSION_LIST: PendingPermission[] = [];
-const AGENT_CONTEXT_PANEL_BREAKPOINT = 1120;
-
-function appendPersistedImages(
-  setAttachments: AgentInputDraft["setAttachments"],
-  images: readonly AttachmentMetadata[],
-): void {
-  const imageAttachments = images.map((metadata) => ({ kind: "image" as const, metadata }));
-  setAttachments((previous) => [...previous, ...imageAttachments]);
-}
 
 type RouteBottomAnchorRequest = ReturnType<typeof deriveRouteBottomAnchorRequest>;
 
@@ -718,7 +704,6 @@ function ChatAgentContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
-  const { workspaceId } = usePaneContext();
   const { api: toastApi, toast: toastState, dismiss: dismissToast } = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
@@ -1075,7 +1060,6 @@ function ChatAgentContent({
   return (
     <ChatAgentReadyContent
       serverId={serverId}
-      workspaceId={workspaceId}
       agentId={agentId}
       isPaneFocused={isPaneFocused}
       isArchivingCurrentAgent={isArchivingCurrentAgent}
@@ -1101,7 +1085,6 @@ function ChatAgentContent({
 
 const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   serverId,
-  workspaceId,
   agentId,
   isPaneFocused,
   isArchivingCurrentAgent,
@@ -1123,7 +1106,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile,
 }: {
   serverId: string;
-  workspaceId: string;
   agentId: string;
   isPaneFocused: boolean;
   isArchivingCurrentAgent: boolean;
@@ -1167,45 +1149,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     }),
     [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
   );
-  const { onLayout: onAgentLayout, isBelow: isContextPanelHidden } = useContainerWidthBelow(
-    AGENT_CONTEXT_PANEL_BREAKPOINT,
-    { initialIsBelow: true },
-  );
-  const workspacePersistenceKey = useMemo(
-    () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
-    [serverId, workspaceId],
-  );
-  const workspacePaneCount = useWorkspaceLayoutStore((state) => {
-    const layout = workspacePersistenceKey
-      ? state.layoutByWorkspace[workspacePersistenceKey]
-      : undefined;
-    return layout ? collectAllPanes(layout.root).length : 1;
-  });
-  const showContextPanel = shouldShowAgentContextPanel({
-    isWeb,
-    isBelowBreakpoint: isContextPanelHidden,
-    paneCount: workspacePaneCount,
-  });
-  const { pickImages } = useImageAttachmentPicker();
-  const addSource = useCallback(async () => {
-    try {
-      const newImages = await pickAndPersistImages({
-        pickImages,
-        persister: {
-          persistFromBlob: ({ blob, mimeType, fileName }) =>
-            persistAttachmentFromBlob({ blob, mimeType, fileName }),
-          persistFromFileUri: ({ uri, mimeType, fileName }) =>
-            persistAttachmentFromFileUri({ uri, mimeType, fileName }),
-        },
-      });
-      appendPersistedImages(setAttachments, newImages);
-    } catch (error) {
-      toastApi.error(toErrorMessage(error));
-    }
-  }, [pickImages, setAttachments, toastApi]);
-  const handleAddSource = useCallback(() => {
-    void addSource();
-  }, [addSource]);
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1235,7 +1178,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
         onMessageSent={handleMessageSent}
-        hideSubagentsTrack={showContextPanel}
       />
     </RenderProfile>
   );
@@ -1243,37 +1185,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     <ReanimatedAnimated.View style={animatedContentStyle}>{streamSection}</ReanimatedAnimated.View>
   );
   const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
-  const conversationColumn = (
-    <View style={styles.conversationColumn}>
-      {contentContainer}
-      {composerSection}
-    </View>
-  );
-  const contextPanel = showContextPanel ? (
-    <View style={styles.contextPanelSlot}>
-      <AgentContextPanel
-        serverId={serverId}
-        agentId={agentId}
-        cwd={cwd}
-        isGit={effectiveAgent.projectPlacement?.checkout?.isGit === true}
-        draftAttachments={agentInputDraft.attachments}
-        onAddSource={handleAddSource}
-        onOpenWorkspaceFile={onOpenWorkspaceFile}
-      />
-    </View>
-  ) : null;
-  const agentLayout = (
-    <View style={styles.agentLayout} onLayout={onAgentLayout}>
-      {conversationColumn}
-      {contextPanel}
-    </View>
-  );
 
   return (
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
       <View style={styles.root}>
         <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
-          {agentLayout}
+          {contentContainer}
+
+          {composerSection}
 
           {showHistorySyncOverlay ? (
             <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -1351,7 +1270,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       ref={streamViewRef}
       agentId={agent.id}
       serverId={serverId}
-      agent={agent}
+      context={agent}
       streamItems={streamItems}
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}
@@ -1375,7 +1294,6 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
-  hideSubagentsTrack,
 }: {
   agentId?: string;
   serverId: string;
@@ -1389,7 +1307,6 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
-  hideSubagentsTrack: boolean;
 }) {
   if (!agentId) {
     return null;
@@ -1413,7 +1330,6 @@ const AgentComposerSection = memo(function AgentComposerSection({
       onAttentionPromptSend={onAttentionPromptSend}
       onComposerHeightChange={onComposerHeightChange}
       onMessageSent={onMessageSent}
-      hideSubagentsTrack={hideSubagentsTrack}
     />
   );
 });
@@ -1429,7 +1345,6 @@ function ActiveAgentComposer({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
-  hideSubagentsTrack,
 }: {
   agentId: string;
   serverId: string;
@@ -1441,7 +1356,6 @@ function ActiveAgentComposer({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
-  hideSubagentsTrack: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1450,7 +1364,7 @@ function ActiveAgentComposer({
     { initialIsBelow: isCompactFormFactor },
   );
   const paneContext = usePaneContext();
-  const { workspaceId, tabId, retargetCurrentTab } = paneContext;
+  const { workspaceId, tabId, retargetCurrentTab, openTab } = paneContext;
   const { archiveAgent } = useArchiveAgent();
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
@@ -1467,6 +1381,12 @@ function ActiveAgentComposer({
       navigateToAgent({ serverId, agentId: subagentId });
     },
     [serverId],
+  );
+  const handleOpenProviderSubagent = useCallback(
+    (parentAgentId: string, subagentId: string) => {
+      openTab({ kind: "provider_subagent", parentAgentId, subagentId });
+    },
+    [openTab],
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
   const handleDetachSubagent = useDetachSubagent({ serverId });
@@ -1565,14 +1485,13 @@ function ActiveAgentComposer({
 
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
-      {hideSubagentsTrack ? null : (
-        <SubagentsTrack
-          rows={subagentRows}
-          onOpenSubagent={handleOpenSubagent}
-          onArchiveSubagent={handleArchiveSubagent}
-          onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
-        />
-      )}
+      <SubagentsTrack
+        rows={subagentRows}
+        onOpenSubagent={handleOpenSubagent}
+        onOpenProviderSubagent={handleOpenProviderSubagent}
+        onArchiveSubagent={handleArchiveSubagent}
+        onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
+      />
       <Composer
         agentId={agentId}
         serverId={serverId}
@@ -1687,21 +1606,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   content: {
     flex: 1,
-  },
-  agentLayout: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-  },
-  conversationColumn: {
-    flex: 1,
-    minWidth: 0,
-  },
-  contextPanelSlot: {
-    width: 320,
-    paddingTop: theme.spacing[4],
-    paddingRight: theme.spacing[4],
-    paddingBottom: theme.spacing[4],
   },
   inputAreaWrapper: {
     width: "100%",

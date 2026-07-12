@@ -139,18 +139,6 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
-// Background import of external CLI sessions (Claude Code, Codex, OpenCode) into
-// the workspaces that already exist. `providers` is an allowlist; a provider only
-// participates if it also advertises session-listing support.
-const MutableSessionAutosyncConfigSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    intervalSeconds: z.number().default(60),
-    providers: z.array(z.string()).default([]),
-    maxImportsPerPass: z.number().default(25),
-  })
-  .passthrough();
-export const DEFAULT_SESSION_AUTOSYNC_PROVIDERS = ["claude", "codex", "opencode"] as const;
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -159,12 +147,6 @@ export const MutableDaemonConfigSchema = z
       })
       .passthrough(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
-    sessionAutosync: MutableSessionAutosyncConfigSchema.default({
-      enabled: false,
-      intervalSeconds: 60,
-      providers: [...DEFAULT_SESSION_AUTOSYNC_PROVIDERS],
-      maxImportsPerPass: 25,
-    }),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
     autoArchiveAfterMerge: z.boolean().default(false),
@@ -178,7 +160,6 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
-    sessionAutosync: MutableSessionAutosyncConfigSchema.partial().optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
@@ -1314,6 +1295,22 @@ export const FetchAgentTimelineRequestMessageSchema = z.object({
   projection: z.enum(["projected", "canonical"]).optional(),
 });
 
+export const ProviderSubagentListRequestMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.list.request"),
+  parentAgentId: z.string(),
+  requestId: z.string(),
+});
+
+export const ProviderSubagentTimelineRequestMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.timeline.get.request"),
+  parentAgentId: z.string(),
+  subagentId: z.string(),
+  requestId: z.string(),
+  direction: z.enum(["tail", "before", "after"]).optional(),
+  cursor: AgentTimelineCursorSchema.optional(),
+  limit: z.number().int().nonnegative().optional(),
+});
+
 export const AgentForkContextRequestMessageSchema = z.object({
   type: z.literal("agent.fork_context.request"),
   agentId: z.string(),
@@ -1682,36 +1679,6 @@ export const GitHubSearchRequestSchema = z.object({
   requestId: z.string(),
 });
 
-// A repository the authenticated GitHub user can clone. Only the fields the
-// project picker renders or needs to clone; `nameWithOwner` is the clone key.
-export const GitHubRepositorySummarySchema = z.object({
-  nameWithOwner: z.string(),
-  name: z.string(),
-  owner: z.string(),
-  description: z.string().nullable(),
-  isPrivate: z.boolean(),
-  isFork: z.boolean(),
-  updatedAt: z.string().nullable(),
-});
-
-// Lists repositories for the authenticated gh user. Unlike the other GitHub
-// RPCs this one is not scoped to a checkout, so it takes no cwd.
-export const ProjectGitHubListReposRequestSchema = z.object({
-  type: z.literal("project.github.list_repos.request"),
-  query: z.string().optional(),
-  limit: z.number().int().min(1).max(200).optional(),
-  requestId: z.string(),
-});
-
-// Clones `nameWithOwner` into a new directory under `parentDirectory` (daemon
-// home when omitted) and registers the result as a project.
-export const ProjectGitHubCloneRequestSchema = z.object({
-  type: z.literal("project.github.clone.request"),
-  nameWithOwner: z.string(),
-  parentDirectory: z.string().optional(),
-  requestId: z.string(),
-});
-
 export const DirectorySuggestionsRequestSchema = z.object({
   type: z.literal("directory_suggestions_request"),
   query: z.string(),
@@ -1758,10 +1725,6 @@ export const FirstAgentContextSchema = z.object({
   prompt: z.string().optional(),
   attachments: AgentAttachmentsSchema,
 });
-
-// Workspaces created without a user-selected project still need an internal
-// project identity for persistence. Clients render this group as flat tasks.
-export const STANDALONE_TASKS_PROJECT_ID = "paseo:standalone-tasks";
 
 export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
@@ -2142,6 +2105,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RestartServerRequestMessageSchema,
   DaemonUpdateRequestMessageSchema,
   FetchAgentTimelineRequestMessageSchema,
+  ProviderSubagentListRequestMessageSchema,
+  ProviderSubagentTimelineRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
@@ -2173,8 +2138,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
   GitHubSearchRequestSchema,
-  ProjectGitHubListReposRequestSchema,
-  ProjectGitHubCloneRequestSchema,
   DirectorySuggestionsRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
@@ -2422,8 +2385,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
-        // COMPAT(projectGithubRepos): added in v0.1.105, remove gate after 2027-02-21.
-        projectGithubRepos: z.boolean().optional(),
+        // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
+        providerSubagents: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3013,6 +2976,88 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
     entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
   }),
+});
+
+export const ProviderSubagentDescriptorPayloadSchema = z.object({
+  id: z.string(),
+  parentAgentId: z.string(),
+  provider: AgentProviderSchema,
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  status: z.enum(["running", "completed", "failed", "canceled"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  toolCallId: z.string().nullable(),
+  cwd: z.string().nullable().optional(),
+});
+
+export type ProviderSubagentDescriptorPayload = z.infer<
+  typeof ProviderSubagentDescriptorPayloadSchema
+>;
+
+export const ProviderSubagentListResponseMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    parentAgentId: z.string(),
+    subagents: z.array(ProviderSubagentDescriptorPayloadSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProviderSubagentTimelineResponseMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.timeline.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    parentAgentId: z.string(),
+    subagentId: z.string(),
+    provider: AgentProviderSchema.nullable(),
+    direction: z.enum(["tail", "before", "after"]),
+    epoch: z.string(),
+    reset: z.boolean(),
+    staleCursor: z.boolean(),
+    gap: z.boolean(),
+    window: z.object({
+      minSeq: z.number().int().nonnegative(),
+      maxSeq: z.number().int().nonnegative(),
+      nextSeq: z.number().int().nonnegative(),
+    }),
+    hasOlder: z.boolean(),
+    hasNewer: z.boolean(),
+    rows: z.array(
+      z.object({
+        item: AgentTimelineItemPayloadSchema,
+        timestamp: z.string(),
+        seq: z.number().int().nonnegative(),
+      }),
+    ),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProviderSubagentUpdateMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.update"),
+  payload: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("upsert"),
+      subagent: ProviderSubagentDescriptorPayloadSchema,
+    }),
+    z.object({
+      kind: z.literal("timeline"),
+      parentAgentId: z.string(),
+      subagentId: z.string(),
+      provider: AgentProviderSchema,
+      item: AgentTimelineItemPayloadSchema,
+      timestamp: z.string(),
+      seq: z.number().int().nonnegative(),
+      epoch: z.string(),
+    }),
+    z.object({
+      kind: z.literal("remove"),
+      parentAgentId: z.string(),
+      subagentId: z.string(),
+    }),
+  ]),
 });
 
 export const AgentForkContextResponseMessageSchema = z.object({
@@ -3795,34 +3840,6 @@ export const GitHubSearchResponseSchema = z.object({
   }),
 });
 
-export const ProjectGitHubListReposResponseSchema = z.object({
-  type: z.literal("project.github.list_repos.response"),
-  payload: z.object({
-    repositories: z.array(GitHubRepositorySummarySchema),
-    // False when gh is missing or unauthenticated, so the client can explain
-    // why the list is empty instead of showing "no matches".
-    githubFeaturesEnabled: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const ProjectGitHubCloneResponseSchema = z.object({
-  type: z.literal("project.github.clone.response"),
-  payload: z.object({
-    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
-    // Absolute path the repository was cloned into, null on failure.
-    path: z.string().nullable(),
-    error: z.string().nullable(),
-    // Unknown codes from newer daemons degrade to null; clients fall back to `error`.
-    errorCode: z
-      .enum(["github_unavailable", "clone_failed", "destination_unavailable"])
-      .nullish()
-      .catch(null),
-    requestId: z.string(),
-  }),
-});
-
 export const DirectorySuggestionsResponseSchema = z.object({
   type: z.literal("directory_suggestions_response"),
   payload: z.object({
@@ -4292,6 +4309,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
+  ProviderSubagentListResponseMessageSchema,
+  ProviderSubagentTimelineResponseMessageSchema,
+  ProviderSubagentUpdateMessageSchema,
   AgentForkContextResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
@@ -4346,8 +4366,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
   GitHubSearchResponseSchema,
-  ProjectGitHubListReposResponseSchema,
-  ProjectGitHubCloneResponseSchema,
   DirectorySuggestionsResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
@@ -4670,11 +4688,6 @@ export type ValidateBranchRequest = z.infer<typeof ValidateBranchRequestSchema>;
 export type ValidateBranchResponse = z.infer<typeof ValidateBranchResponseSchema>;
 export type BranchSuggestionsRequest = z.infer<typeof BranchSuggestionsRequestSchema>;
 export type BranchSuggestionsResponse = z.infer<typeof BranchSuggestionsResponseSchema>;
-export type GitHubRepositorySummary = z.infer<typeof GitHubRepositorySummarySchema>;
-export type ProjectGitHubListReposRequest = z.infer<typeof ProjectGitHubListReposRequestSchema>;
-export type ProjectGitHubListReposResponse = z.infer<typeof ProjectGitHubListReposResponseSchema>;
-export type ProjectGitHubCloneRequest = z.infer<typeof ProjectGitHubCloneRequestSchema>;
-export type ProjectGitHubCloneResponse = z.infer<typeof ProjectGitHubCloneResponseSchema>;
 export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
 export type GitHubSearchKind = z.infer<typeof GitHubSearchKindSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;
@@ -4771,6 +4784,7 @@ export const WSHelloMessageSchema = z.object({
       [CLIENT_CAPS.reasoningMergeEnum]: z.boolean().optional(),
       [CLIENT_CAPS.customModeIcons]: z.boolean().optional(),
       [CLIENT_CAPS.terminalReflowableSnapshot]: z.boolean().optional(),
+      [CLIENT_CAPS.providerSubagents]: z.boolean().optional(),
       [CLIENT_CAPS.browserHost]: BrowserAutomationHostCapabilitySchema.optional(),
     })
     .passthrough()
