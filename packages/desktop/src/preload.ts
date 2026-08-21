@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 type EventHandler = (payload: unknown) => void;
 
@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     getCurrentWindow: () => ({
       toggleMaximize: () => ipcRenderer.invoke("paseo:window:toggleMaximize"),
       isFullscreen: () => ipcRenderer.invoke("paseo:window:isFullscreen"),
+      // Synchronous on purpose: layout that reserves room for the native window
+      // controls needs this during render, not a frame later.
+      getZoomFactor: () => webFrame.getZoomFactor(),
       updateWindowControls: (update: {
         height?: number;
         backgroundColor?: string;

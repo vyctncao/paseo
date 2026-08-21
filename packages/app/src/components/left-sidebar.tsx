@@ -74,11 +74,24 @@ import {
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { SPACING } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 
 const MIN_CHAT_WIDTH = 400;
+
+/** Square hit target of the collapse/search icons in the sidebar chrome row. */
+const SIDEBAR_CHROME_ICON_SIZE = 32;
+
+/**
+ * How far the open sidebar's chrome row sits from the window edge: the floating
+ * panel's margin (`desktopSidebarBorder`, `theme.spacing[3]`) plus its 1px border.
+ * The collapsed toggle floats over the workspace pane instead of inside that panel,
+ * so it reproduces the inset by hand — otherwise it shifts left and up as the sidebar
+ * closes and lands on the macOS traffic lights, which then swallow its clicks.
+ */
+const DESKTOP_SIDEBAR_PANEL_INSET = SPACING[3] + 1;
 
 type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>;
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
@@ -864,7 +877,7 @@ function SidebarChromeRow({ controlsPadding }: { controlsPadding: WindowControls
     () => [
       styles.sidebarChromeRow,
       {
-        minHeight: Math.max(32, controlsPadding.top),
+        minHeight: Math.max(SIDEBAR_CHROME_ICON_SIZE, controlsPadding.top),
         paddingLeft: controlsPadding.left,
       },
     ],
@@ -900,18 +913,36 @@ function SidebarChromeRow({ controlsPadding }: { controlsPadding: WindowControls
 }
 
 /**
- * The only on-screen way back once the sidebar is collapsed — the toggle lives inside it.
- * Floats over the workspace pane rather than reserving a rail, and takes the `header`
- * window-controls padding so it clears the traffic lights, which sit here when closed.
+ * Belt-and-braces against the drag overlay described on {@link CollapsedSidebarToggle}:
+ * the global `no-drag` backstop in `public/index.html` only matches the inner control, so
+ * claim the floating wrapper too.
  */
-function CollapsedSidebarToggle() {
+const COLLAPSED_TOGGLE_NO_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "no-drag" } as object) : null;
+
+/**
+ * The only on-screen way back once the sidebar is collapsed — the toggle normally lives
+ * inside it. Floats over the workspace pane rather than reserving a rail, and takes the
+ * `sidebar` window-controls padding so it clears the traffic lights, which sit here when
+ * closed.
+ *
+ * Mounted as the last child of the workspace chrome row in `app/_layout.tsx` rather than
+ * from `DesktopSidebar`. Electron resolves `-webkit-app-region` rectangles in layout-tree
+ * order — unioning `drag` and subtracting `no-drag`, so the last rectangle covering a
+ * point wins, and neither z-index nor pointer events are consulted. Collapsed, this
+ * toggle floats over the workspace pane, whose header renders a full-bleed drag overlay
+ * (`TitlebarDragRegion`). Mounted before that overlay, the toggle's `no-drag` is
+ * re-covered by it and macOS turns every click into a window drag.
+ */
+export function CollapsedSidebarToggle() {
   const padding = useWindowControlsPadding("sidebar");
   const style = useMemo(
     () => [
       styles.collapsedToggle,
+      COLLAPSED_TOGGLE_NO_DRAG_STYLE,
       {
-        top: Math.max(0, (padding.top - 32) / 2),
-        left: padding.left,
+        top:
+          DESKTOP_SIDEBAR_PANEL_INSET + Math.max(0, (padding.top - SIDEBAR_CHROME_ICON_SIZE) / 2),
+        left: DESKTOP_SIDEBAR_PANEL_INSET + padding.left,
       },
     ],
     [padding.left, padding.top],
@@ -1005,11 +1036,11 @@ function DesktopSidebar({
     [],
   );
 
-  // The workspace top bar is gone, so this is the only place the toggle lives. When the
-  // sidebar is collapsed there is nothing left to render it, and the pane behind it has
-  // no chrome — hence the floating affordance, which also clears the traffic lights.
+  // Collapsed, the sidebar renders nothing. The floating un-collapse affordance is
+  // mounted after the workspace content in app/_layout.tsx so the pane's titlebar drag
+  // overlay cannot re-cover its no-drag region — see CollapsedSidebarToggle.
   if (!isOpen) {
-    return <CollapsedSidebarToggle />;
+    return null;
   }
 
   return (

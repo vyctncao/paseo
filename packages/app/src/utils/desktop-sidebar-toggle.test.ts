@@ -1,6 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { toggleDesktopSidebarsWithCheckoutIntent } from "./desktop-sidebar-toggle";
+import {
+  shouldRenderCollapsedSidebarToggle,
+  toggleDesktopSidebarsWithCheckoutIntent,
+} from "./desktop-sidebar-toggle";
+
+describe("shouldRenderCollapsedSidebarToggle", () => {
+  const base = {
+    isCompact: false,
+    chromeEnabled: true,
+    focusModeEnabled: false,
+    isAgentListOpen: false,
+  };
+
+  it("renders the floating toggle when the desktop sidebar is collapsed", () => {
+    expect(shouldRenderCollapsedSidebarToggle(base)).toBe(true);
+  });
+
+  it("does not render the floating toggle while the sidebar is open", () => {
+    expect(shouldRenderCollapsedSidebarToggle({ ...base, isAgentListOpen: true })).toBe(false);
+  });
+
+  it("leaves compact layouts to the toggle in their screen header", () => {
+    expect(shouldRenderCollapsedSidebarToggle({ ...base, isCompact: true })).toBe(false);
+  });
+
+  it("stays hidden when chrome is disabled or focus mode owns the window", () => {
+    expect(shouldRenderCollapsedSidebarToggle({ ...base, chromeEnabled: false })).toBe(false);
+    expect(shouldRenderCollapsedSidebarToggle({ ...base, focusModeEnabled: true })).toBe(false);
+  });
+});
 
 describe("toggleDesktopSidebarsWithCheckoutIntent", () => {
   it("closes both sidebars when either desktop sidebar is open", () => {

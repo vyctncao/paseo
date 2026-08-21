@@ -97,6 +97,8 @@ export interface DesktopWindowBridge {
   label?: string;
   toggleMaximize?: () => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
+  /** Electron's renderer zoom factor (1 at 100%). Synchronous — safe to read during render. */
+  getZoomFactor?: () => number;
   updateWindowControls?: (update: DesktopWindowControlsOverlayUpdate) => Promise<void>;
   onResized?: <TEvent = unknown>(
     handler: (event: TEvent) => void,

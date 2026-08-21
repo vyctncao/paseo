@@ -38,7 +38,7 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
-import { LeftSidebar } from "@/components/left-sidebar";
+import { CollapsedSidebarToggle, LeftSidebar } from "@/components/left-sidebar";
 import { OnScreenPet } from "@/components/pet/on-screen-pet";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
@@ -108,7 +108,10 @@ import { usePanelStore } from "@/stores/panel-store";
 import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
 import { AppBackdrop } from "@/components/backdrop-scene";
 import type { HostProfile } from "@/types/host-connection";
-import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import {
+  shouldRenderCollapsedSidebarToggle,
+  toggleDesktopSidebarsWithCheckoutIntent,
+} from "@/utils/desktop-sidebar-toggle";
 import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildOpenProjectRoute,
@@ -469,6 +472,7 @@ function AppContainer({
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const explorerWidth = usePanelStore((state) => state.explorerWidth);
 
   const cycleTheme = useCallback(() => {
@@ -545,6 +549,18 @@ function AppContainer({
       ) : (
         <View style={flexStyle}>{children}</View>
       )}
+      {/*
+        Must stay last in this row. Electron resolves -webkit-app-region rectangles in
+        layout-tree order, later ones overriding earlier ones, so the toggle's no-drag
+        only survives if it comes after the workspace header's full-bleed drag overlay.
+        See CollapsedSidebarToggle.
+      */}
+      {shouldRenderCollapsedSidebarToggle({
+        isCompact: isCompactLayout,
+        chromeEnabled,
+        focusModeEnabled: isFocusModeEnabled,
+        isAgentListOpen: isDesktopAgentListOpen,
+      }) && <CollapsedSidebarToggle />}
     </View>
   );
 
