@@ -1682,6 +1682,36 @@ export const GitHubSearchRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// A repository the authenticated GitHub user can clone. Only the fields the
+// project picker renders or needs to clone; `nameWithOwner` is the clone key.
+export const GitHubRepositorySummarySchema = z.object({
+  nameWithOwner: z.string(),
+  name: z.string(),
+  owner: z.string(),
+  description: z.string().nullable(),
+  isPrivate: z.boolean(),
+  isFork: z.boolean(),
+  updatedAt: z.string().nullable(),
+});
+
+// Lists repositories for the authenticated gh user. Unlike the other GitHub
+// RPCs this one is not scoped to a checkout, so it takes no cwd.
+export const ProjectGitHubListReposRequestSchema = z.object({
+  type: z.literal("project.github.list_repos.request"),
+  query: z.string().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  requestId: z.string(),
+});
+
+// Clones `nameWithOwner` into a new directory under `parentDirectory` (daemon
+// home when omitted) and registers the result as a project.
+export const ProjectGitHubCloneRequestSchema = z.object({
+  type: z.literal("project.github.clone.request"),
+  nameWithOwner: z.string(),
+  parentDirectory: z.string().optional(),
+  requestId: z.string(),
+});
+
 export const DirectorySuggestionsRequestSchema = z.object({
   type: z.literal("directory_suggestions_request"),
   query: z.string(),
@@ -2143,6 +2173,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
   GitHubSearchRequestSchema,
+  ProjectGitHubListReposRequestSchema,
+  ProjectGitHubCloneRequestSchema,
   DirectorySuggestionsRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
@@ -2390,6 +2422,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
+        // COMPAT(projectGithubRepos): added in v0.1.105, remove gate after 2027-02-21.
+        projectGithubRepos: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3761,6 +3795,34 @@ export const GitHubSearchResponseSchema = z.object({
   }),
 });
 
+export const ProjectGitHubListReposResponseSchema = z.object({
+  type: z.literal("project.github.list_repos.response"),
+  payload: z.object({
+    repositories: z.array(GitHubRepositorySummarySchema),
+    // False when gh is missing or unauthenticated, so the client can explain
+    // why the list is empty instead of showing "no matches".
+    githubFeaturesEnabled: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const ProjectGitHubCloneResponseSchema = z.object({
+  type: z.literal("project.github.clone.response"),
+  payload: z.object({
+    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
+    // Absolute path the repository was cloned into, null on failure.
+    path: z.string().nullable(),
+    error: z.string().nullable(),
+    // Unknown codes from newer daemons degrade to null; clients fall back to `error`.
+    errorCode: z
+      .enum(["github_unavailable", "clone_failed", "destination_unavailable"])
+      .nullish()
+      .catch(null),
+    requestId: z.string(),
+  }),
+});
+
 export const DirectorySuggestionsResponseSchema = z.object({
   type: z.literal("directory_suggestions_response"),
   payload: z.object({
@@ -4284,6 +4346,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
   GitHubSearchResponseSchema,
+  ProjectGitHubListReposResponseSchema,
+  ProjectGitHubCloneResponseSchema,
   DirectorySuggestionsResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
@@ -4606,6 +4670,11 @@ export type ValidateBranchRequest = z.infer<typeof ValidateBranchRequestSchema>;
 export type ValidateBranchResponse = z.infer<typeof ValidateBranchResponseSchema>;
 export type BranchSuggestionsRequest = z.infer<typeof BranchSuggestionsRequestSchema>;
 export type BranchSuggestionsResponse = z.infer<typeof BranchSuggestionsResponseSchema>;
+export type GitHubRepositorySummary = z.infer<typeof GitHubRepositorySummarySchema>;
+export type ProjectGitHubListReposRequest = z.infer<typeof ProjectGitHubListReposRequestSchema>;
+export type ProjectGitHubListReposResponse = z.infer<typeof ProjectGitHubListReposResponseSchema>;
+export type ProjectGitHubCloneRequest = z.infer<typeof ProjectGitHubCloneRequestSchema>;
+export type ProjectGitHubCloneResponse = z.infer<typeof ProjectGitHubCloneResponseSchema>;
 export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
 export type GitHubSearchKind = z.infer<typeof GitHubSearchKindSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;

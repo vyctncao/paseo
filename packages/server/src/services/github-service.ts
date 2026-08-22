@@ -6,6 +6,10 @@ import { runGitCommand } from "../utils/run-git-command.js";
 import { execCommand } from "../utils/spawn.js";
 
 const DEFAULT_GITHUB_CACHE_TTL_MS = 30_000;
+const DEFAULT_REPOSITORY_LIST_LIMIT = 200;
+const REPOSITORY_AFFILIATIONS = "owner,collaborator,organization_member";
+const REPOSITORY_LIST_JQ =
+  ".[] | {nameWithOwner: .full_name, name: .name, owner: .owner.login, description: .description, isPrivate: .private, isFork: .fork, updatedAt: .updated_at}";
 const CHECK_ANNOTATION_PAGE_MAX = 20;
 const CHECK_LOG_TAIL_MAX_LINES = 200;
 const CHECK_LOG_TAIL_MAX_BYTES = 16 * 1024;
@@ -21,6 +25,17 @@ const GITHUB_ENV = {
 
 const LabelSchema = z.object({
   name: z.string().optional(),
+});
+
+// Shape of the `--jq` projection in listRepositories, not the raw REST payload.
+const GitHubRepositorySummarySchema = z.object({
+  nameWithOwner: z.string(),
+  name: z.string().catch(""),
+  owner: z.string().catch(""),
+  description: z.string().nullable().catch(null),
+  isPrivate: z.boolean().catch(false),
+  isFork: z.boolean().catch(false),
+  updatedAt: z.string().nullable().catch(null),
 });
 
 const GitHubIssueSummarySchema = z.object({
@@ -696,6 +711,29 @@ export type GitHubReadOptions =
       reason: string;
     };
 
+export interface GitHubRepositorySummary {
+  nameWithOwner: string;
+  name: string;
+  owner: string;
+  description: string | null;
+  isPrivate: boolean;
+  isFork: boolean;
+  updatedAt: string | null;
+}
+
+// Repository listing is account-wide rather than checkout-scoped, but `cwd`
+// stays required: it is where the gh process runs and the cache key it uses.
+export type ListGitHubRepositoriesOptions = {
+  cwd: string;
+  limit?: number;
+} & GitHubReadOptions;
+
+export interface CloneGitHubRepositoryOptions {
+  cwd: string;
+  nameWithOwner: string;
+  destinationPath: string;
+}
+
 export type ListGitHubPullRequestsOptions = {
   cwd: string;
   query?: string;
@@ -802,6 +840,8 @@ export interface CreateGitHubPullRequestOptions {
 export interface GitHubService {
   listPullRequests(options: ListGitHubPullRequestsOptions): Promise<GitHubPullRequestSummary[]>;
   listIssues(options: ListGitHubIssuesOptions): Promise<GitHubIssueSummary[]>;
+  listRepositories(options: ListGitHubRepositoriesOptions): Promise<GitHubRepositorySummary[]>;
+  cloneRepository(options: CloneGitHubRepositoryOptions): Promise<void>;
   getPullRequest(options: GetGitHubPullRequestOptions): Promise<GitHubPullRequestSummary>;
   getPullRequestHeadRef(options: GetGitHubPullRequestOptions): Promise<string>;
   getPullRequestCheckoutTarget?(
@@ -1144,6 +1184,40 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           );
           return parseIssueSummaries(stdout);
         },
+      });
+    },
+
+    listRepositories(input) {
+      const limit = input.limit ?? DEFAULT_REPOSITORY_LIST_LIMIT;
+      return cached({
+        cwd: input.cwd,
+        method: "listRepositories",
+        args: { limit },
+        readOptions: input,
+        load: async () => {
+          // `gh repo list` only covers repos the user owns. The REST endpoint
+          // with an affiliation filter also returns org and collaborator repos,
+          // which is what "all my repos" means in the project picker.
+          const stdout = await run(
+            [
+              "api",
+              "--paginate",
+              `user/repos?per_page=100&sort=updated&affiliation=${REPOSITORY_AFFILIATIONS}`,
+              "--jq",
+              REPOSITORY_LIST_JQ,
+            ],
+            { cwd: input.cwd },
+          );
+          return parseRepositorySummaries(stdout).slice(0, limit);
+        },
+      });
+    },
+
+    async cloneRepository(input) {
+      // `gh repo clone` over `git clone` so private repos authenticate with the
+      // gh token instead of depending on the daemon user's git credentials.
+      await run(["repo", "clone", input.nameWithOwner, input.destinationPath], {
+        cwd: input.cwd,
       });
     },
 
@@ -2204,6 +2278,16 @@ function toPullRequestSummary(
     labels: item.labels.map((label) => label.name ?? "").filter((name) => name.length > 0),
     updatedAt: item.updatedAt,
   };
+}
+
+// `gh api --paginate` concatenates one JSON array per page, so the projection
+// asks jq for a single object per line and we parse the result as JSONL.
+function parseRepositorySummaries(stdout: string): GitHubRepositorySummary[] {
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => GitHubRepositorySummarySchema.parse(JSON.parse(line)));
 }
 
 function parseIssueSummaries(stdout: string): GitHubIssueSummary[] {
