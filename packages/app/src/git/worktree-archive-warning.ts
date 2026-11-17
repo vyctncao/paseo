@@ -19,6 +19,7 @@ export interface WorktreeArchiveConfirmationInput extends WorktreeArchiveRisk {
 
 export interface WorktreeArchiveWarningLabels {
   title: (worktreeName: string) => string;
+  massTitle: (count: number) => string;
   confirm: string;
   cancel: string;
   uncommittedChanges: string;
@@ -30,6 +31,7 @@ export interface WorktreeArchiveWarningLabels {
 
 export const DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS: WorktreeArchiveWarningLabels = {
   title: (worktreeName) => i18n.t("workspace.git.actions.archiveWarning.title", { worktreeName }),
+  massTitle: (count) => i18n.t("workspace.git.actions.archiveWarning.massTitle", { count }),
   confirm: i18n.t("workspace.git.actions.archiveWarning.confirm"),
   cancel: i18n.t("workspace.git.actions.archiveWarning.cancel"),
   uncommittedChanges: i18n.t("workspace.git.actions.archiveWarning.uncommittedChanges"),
@@ -113,6 +115,30 @@ export function buildWorktreeArchiveConfirmationMessage(
   return reasons.join("\n");
 }
 
+/**
+ * A worktree is only worth confirming when archiving it would discard work that
+ * lives nowhere else. Callers that both prompt about a set and act on the answer
+ * must agree on that set, so they share this predicate rather than re-deriving it.
+ */
+export function isRiskyWorktreeArchive(
+  input: WorktreeArchiveConfirmationInput,
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
+): boolean {
+  return buildWorktreeArchiveConfirmationMessage(input, labels) !== null;
+}
+
+export function buildMassWorktreeArchiveMessage(
+  worktrees: WorktreeArchiveConfirmationInput[],
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
+): string | null {
+  const sections = worktrees.flatMap((worktree) => {
+    const reasons = buildWorktreeArchiveConfirmationMessage(worktree, labels);
+    return reasons ? [`${worktree.worktreeName}\n${reasons}`] : [];
+  });
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
 export async function confirmRiskyWorktreeArchive(
   input: WorktreeArchiveConfirmationInput,
   labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
@@ -124,6 +150,39 @@ export async function confirmRiskyWorktreeArchive(
 
   return await confirmDialog({
     title: labels.title(input.worktreeName),
+    message,
+    confirmLabel: labels.confirm,
+    cancelLabel: labels.cancel,
+    destructive: true,
+  });
+}
+
+/**
+ * Asks once for a whole batch instead of once per worktree. A single risky
+ * worktree reuses the singular dialog verbatim, so the plural copy only ever
+ * appears when there is genuinely more than one thing to weigh.
+ */
+export async function confirmRiskyWorktreeArchiveMass(
+  worktrees: WorktreeArchiveConfirmationInput[],
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
+): Promise<boolean> {
+  const risky = worktrees.filter((worktree) => isRiskyWorktreeArchive(worktree, labels));
+  if (risky.length === 0) {
+    return true;
+  }
+
+  const soleRiskyWorktree = risky[0];
+  if (risky.length === 1 && soleRiskyWorktree) {
+    return await confirmRiskyWorktreeArchive(soleRiskyWorktree, labels);
+  }
+
+  const message = buildMassWorktreeArchiveMessage(risky, labels);
+  if (!message) {
+    return true;
+  }
+
+  return await confirmDialog({
+    title: labels.massTitle(risky.length),
     message,
     confirmLabel: labels.confirm,
     cancelLabel: labels.cancel,

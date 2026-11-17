@@ -94,11 +94,7 @@ export class ClaudeSidechainTracker {
       type: "sub_agent",
       ...(state.subAgentType ? { subAgentType: state.subAgentType } : {}),
       ...(state.description ? { description: state.description } : {}),
-      log: state.actions
-        .map((action) =>
-          action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
-        )
-        .join("\n"),
+      log: this.formatActionLog(state),
       actions: [],
     };
 
@@ -114,12 +110,33 @@ export class ClaudeSidechainTracker {
     ];
   }
 
+  /**
+   * The action log derived for this sidechain, if it produced one. The task protocol writes the
+   * same card and defers to this when it exists, so a foreground subagent keeps its richer
+   * per-tool log instead of being overwritten by a single progress line.
+   */
+  getLog(toolUseId: string): string | undefined {
+    const state = this.activeSidechains.get(toolUseId);
+    if (!state || state.actions.length === 0) {
+      return undefined;
+    }
+    return this.formatActionLog(state);
+  }
+
   delete(toolUseId: string): void {
     this.activeSidechains.delete(toolUseId);
   }
 
   clear(): void {
     this.activeSidechains.clear();
+  }
+
+  private formatActionLog(state: SubAgentActivityState): string {
+    return state.actions
+      .map((action) =>
+        action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
+      )
+      .join("\n");
   }
 
   private updateSubAgentContextFromTaskInput(

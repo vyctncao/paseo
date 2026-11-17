@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getIsElectronRuntimeMac,
   getIsElectronRuntime,
+  useIsCompactFormFactor,
   DESKTOP_TRAFFIC_LIGHT_WIDTH,
+  DESKTOP_TRAFFIC_LIGHT_GUTTER,
   DESKTOP_TRAFFIC_LIGHT_HEIGHT,
   DESKTOP_WINDOW_CONTROLS_WIDTH,
   DESKTOP_WINDOW_CONTROLS_HEIGHT,
@@ -170,7 +172,7 @@ export function resolveRawWindowControlsPadding(input: {
 
   if (input.isMac) {
     return {
-      left: toCssPixels(DESKTOP_TRAFFIC_LIGHT_WIDTH),
+      left: toCssPixels(DESKTOP_TRAFFIC_LIGHT_WIDTH + DESKTOP_TRAFFIC_LIGHT_GUTTER),
       right: 0,
       top: toCssPixels(DESKTOP_TRAFFIC_LIGHT_HEIGHT),
     };
@@ -197,6 +199,7 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
   const sidebarOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const explorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const focusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
+  const isCompact = useIsCompactFormFactor();
   const rawPadding = useRawWindowControlsPadding();
   const sidebarClosed = !sidebarOpen;
 
@@ -206,6 +209,7 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
     sidebarClosed,
     explorerOpen,
     focusModeEnabled,
+    isCompact,
   });
 
   return useMemo(() => ({ left, right, top }), [left, right, top]);
@@ -217,6 +221,12 @@ export function resolveWindowControlsPadding(input: {
   sidebarClosed: boolean;
   explorerOpen: boolean;
   focusModeEnabled: boolean;
+  /**
+   * Compact layouts never mount the inline desktop sidebar, so `sidebarClosed`
+   * stops describing who covers the traffic lights. Required rather than
+   * optional so a new caller has to answer the question.
+   */
+  isCompact: boolean;
 }): RawWindowControlsPadding {
   if (input.role === "sidebar") {
     return {
@@ -227,8 +237,15 @@ export function resolveWindowControlsPadding(input: {
   }
 
   if (input.role === "header") {
+    // Only the inline desktop sidebar covers the traffic lights, and
+    // `app/_layout.tsx` mounts it solely on non-compact layouts — compact ones get
+    // an overlay drawer that starts below the titlebar. `agentListOpen` is a
+    // persisted preference that defaults to open on desktop (`DEFAULT_DESKTOP_OPEN
+    // = isWeb`), so trusting it alone leaves a compact window's header sitting
+    // under the traffic lights. Mirrors the same guard the `tabRow` role needs.
+    const sidebarCoversWindowControls = !input.isCompact && !input.sidebarClosed;
     return {
-      left: input.sidebarClosed ? input.rawPadding.left : 0,
+      left: sidebarCoversWindowControls ? 0 : input.rawPadding.left,
       right: input.explorerOpen ? 0 : input.rawPadding.right,
       top: 0,
     };

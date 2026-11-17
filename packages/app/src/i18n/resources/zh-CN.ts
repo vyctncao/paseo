@@ -684,6 +684,7 @@ export const zhCN: TranslationResources = {
         },
         archiveWarning: {
           title: "归档「{{worktreeName}}」？",
+          massTitle: "归档 {{count}} 个包含未保存工作的工作区？",
           confirm: "归档",
           cancel: "取消",
           uncommittedChanges: "未 commit 的变更",

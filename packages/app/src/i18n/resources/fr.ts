@@ -716,6 +716,7 @@ export const fr: TranslationResources = {
         },
         archiveWarning: {
           title: "Archiver «{{worktreeName}}»?",
+          massTitle: "Archiver {{count}} espaces de travail avec du travail non enregistré ?",
           confirm: "Archive",
           cancel: "Annuler",
           uncommittedChanges: "Modifications non validées",

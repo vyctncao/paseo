@@ -709,6 +709,7 @@ export const ru: TranslationResources = {
         },
         archiveWarning: {
           title: 'Архив "{{worktreeName}}"?',
+          massTitle: "Архивировать {{count}} рабочих пространств с несохранённой работой?",
           confirm: "Архив",
           cancel: "Отмена",
           uncommittedChanges: "Незафиксированные изменения",

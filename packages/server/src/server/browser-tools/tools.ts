@@ -94,14 +94,15 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
   options.registerTool(
     "browser_new_tab",
     {
-      title: "Create browser tab",
+      title: "Open browser tab",
       description:
-        "Create a new Paseo browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
+        "Open a Paseo browser tab for this agent. Reuses the agent's existing live browser across later turns by default, navigating it when url is provided. Set fresh=true only when the task intentionally needs another independent tab. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
+        fresh: z.boolean().optional(),
       },
     },
-    async ({ url }) => {
+    async ({ url, fresh }) => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
@@ -111,6 +112,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
         agentId: context.agentId,
         cwd: context.cwd,
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+        reuseAgentBrowser: !fresh,
         command: {
           command: "new_tab",
           args: url ? { url } : {},
@@ -887,7 +889,7 @@ function summarizeBrowserSuccess(
 
   if (payload.result.command === "new_tab") {
     return withDialogs(
-      `Created browser tab browserId=${payload.result.browserId} url=${payload.result.url}. Use this browserId for tab-scoped browser tools.`,
+      `Opened browser tab browserId=${payload.result.browserId} url=${payload.result.url}. Use this browserId for tab-scoped browser tools.`,
     );
   }
 

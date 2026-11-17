@@ -23,6 +23,12 @@ export interface BrowserToolsExecuteInput {
   workspaceId?: string;
   requestId?: string;
   timeoutMs?: number;
+  /**
+   * When true, `new_tab` reuses this agent's existing live browser instead of
+   * creating another one. MCP `browser_new_tab` defaults this on so a later
+   * turn can keep working in the same tab; pass false for an intentional extra tab.
+   */
+  reuseAgentBrowser?: boolean;
 }
 
 interface PendingBrowserToolsRequest {
@@ -38,12 +44,19 @@ interface RegisteredBrowserHost {
   supportedCommands: ReadonlySet<BrowserAutomationCommandName>;
 }
 
+interface AgentBrowserAffinity {
+  browserId: string;
+  workspaceId: string;
+}
+
 export interface BrowserToolsBrokerOptions {
   defaultTimeoutMs?: number;
   createRequestId?: () => string;
 }
 
 const DEFAULT_BROWSER_TOOLS_TIMEOUT_MS = 15_000;
+/** Budget for the liveness probe that confirms an agent's remembered tab still exists. */
+const REUSE_PROBE_TIMEOUT_MS = 5_000;
 
 export class BrowserToolsBroker {
   private readonly defaultTimeoutMs: number;
@@ -52,6 +65,7 @@ export class BrowserToolsBroker {
   private readonly pending = new Map<string, PendingBrowserToolsRequest>();
   private readonly browserHostByBrowserId = new Map<string, string>();
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
+  private readonly browserByAgentId = new Map<string, AgentBrowserAffinity>();
   private registrationSequence = 0;
 
   public constructor(options: BrowserToolsBrokerOptions) {
@@ -130,6 +144,22 @@ export class BrowserToolsBroker {
       });
     }
 
+    if (request.data.command.command === "new_tab" && input.reuseAgentBrowser && input.agentId) {
+      const affinity = this.getReusableAgentBrowser(input.agentId, request.data.workspaceId);
+      if (affinity) {
+        const reused = await this.reuseAgentBrowser({
+          affinity,
+          agentId: input.agentId,
+          request: request.data,
+          timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
+        });
+        if (reused) {
+          this.rememberAgentBrowserFromPayload(input, reused);
+          return reused;
+        }
+      }
+    }
+
     if (request.data.command.command === "list_tabs") {
       return this.executeListTabs({
         request: request.data,
@@ -151,11 +181,137 @@ export class BrowserToolsBroker {
       return unsupported;
     }
 
-    return this.sendRequest({
+    const payload = await this.sendRequest({
       host: host.value,
       request: request.data,
       timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
     });
+    this.rememberAgentBrowserFromPayload(input, payload);
+    return payload;
+  }
+
+  private getReusableAgentBrowser(
+    agentId: string,
+    workspaceId: string | undefined,
+  ): AgentBrowserAffinity | null {
+    const affinity = this.browserByAgentId.get(agentId);
+    if (!affinity || !workspaceId || affinity.workspaceId !== workspaceId) {
+      return null;
+    }
+    return affinity;
+  }
+
+  private async reuseAgentBrowser(params: {
+    affinity: AgentBrowserAffinity;
+    agentId: string;
+    request: BrowserAutomationExecuteRequest;
+    timeoutMs: number;
+  }): Promise<BrowserToolsResponsePayload | null> {
+    const requestedWorkspaceId = params.request.workspaceId;
+    if (!requestedWorkspaceId || params.request.command.command !== "new_tab") {
+      return null;
+    }
+
+    // Reuse is an optimization, so every inconvenient answer here falls back to
+    // creating a tab rather than failing the caller's browser_new_tab. The probe
+    // also gets a shorter budget so a slow host cannot double this tool's latency.
+    // Both inner calls get their own request ids. Sharing the caller's id would let a
+    // late probe reply land on the pending fall-through new_tab and resolve it with a
+    // list_tabs payload.
+    const listed = await this.executeListTabs({
+      request: {
+        ...params.request,
+        requestId: `${params.request.requestId}:reuse-probe`,
+        command: { command: "list_tabs", args: {} },
+      },
+      timeoutMs: Math.min(params.timeoutMs, REUSE_PROBE_TIMEOUT_MS),
+    });
+    if (!listed.ok || listed.result.command !== "list_tabs") {
+      return null;
+    }
+    const liveTab = listed.result.tabs.find((tab) => tab.browserId === params.affinity.browserId);
+    if (!liveTab) {
+      this.forgetAgentBrowser(params.affinity.browserId);
+      return null;
+    }
+
+    const url = params.request.command.args.url;
+    if (url) {
+      const navigatePayload = await this.execute({
+        command: { command: "navigate", args: { browserId: params.affinity.browserId, url } },
+        agentId: params.agentId,
+        ...(params.request.cwd ? { cwd: params.request.cwd } : {}),
+        workspaceId: requestedWorkspaceId,
+        requestId: `${params.request.requestId}:reuse-navigate`,
+        timeoutMs: params.timeoutMs,
+      });
+      if (!navigatePayload.ok) {
+        // Any failure means this browser is not usable right now, including a load
+        // that hangs while the tab still lists as alive. Dropping the affinity and
+        // falling through keeps one bad tab from wedging browser_new_tab forever.
+        this.forgetAgentBrowser(params.affinity.browserId);
+        return null;
+      }
+      return {
+        requestId: params.request.requestId,
+        ok: true,
+        result: {
+          command: "new_tab",
+          browserId: params.affinity.browserId,
+          workspaceId: requestedWorkspaceId,
+          url: navigatePayload.result.command === "navigate" ? navigatePayload.result.url : url,
+        },
+        ...(navigatePayload.dialogs ? { dialogs: navigatePayload.dialogs } : {}),
+      };
+    }
+
+    return {
+      requestId: params.request.requestId,
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: params.affinity.browserId,
+        workspaceId: requestedWorkspaceId,
+        url: liveTab.url,
+      },
+    };
+  }
+
+  private rememberAgentBrowserFromPayload(
+    input: BrowserToolsExecuteInput,
+    payload: BrowserToolsResponsePayload,
+  ): void {
+    if (!payload.ok || !input.agentId) {
+      return;
+    }
+
+    if (payload.result.command === "close_tab") {
+      this.forgetAgentBrowser(payload.result.browserId);
+      return;
+    }
+
+    if (payload.result.command === "new_tab") {
+      // A `fresh` tab is meant to be independent, so it must not take over the
+      // agent's reusable slot — otherwise the next default call navigates the tab
+      // the caller just asked to keep separate. It still claims the slot when the
+      // agent has none, since there is nothing to stay independent from.
+      if (input.reuseAgentBrowser === false && this.browserByAgentId.has(input.agentId)) {
+        return;
+      }
+      this.browserByAgentId.set(input.agentId, {
+        browserId: payload.result.browserId,
+        workspaceId: payload.result.workspaceId,
+      });
+      return;
+    }
+  }
+
+  private forgetAgentBrowser(browserId: string): void {
+    for (const [agentId, affinity] of this.browserByAgentId) {
+      if (affinity.browserId === browserId) {
+        this.browserByAgentId.delete(agentId);
+      }
+    }
   }
 
   public receiveResponse(response: BrowserAutomationExecuteResponse): boolean {

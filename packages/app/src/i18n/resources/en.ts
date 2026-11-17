@@ -697,6 +697,7 @@ export const en = {
         },
         archiveWarning: {
           title: 'Archive "{{worktreeName}}"?',
+          massTitle: "Archive {{count}} workspaces with unsaved work?",
           confirm: "Archive",
           cancel: "Cancel",
           uncommittedChanges: "Uncommitted changes",

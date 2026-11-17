@@ -63,6 +63,14 @@ Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-onl
 
 The asymmetry is intentional: a subagent's home is the parent's track, not the tab. Tabs are ephemeral viewing slots; the track is the persistent record of the parent's children.
 
+## Sidebar vs tab strip
+
+The left sidebar is **workspace navigation only**: projects and their workspace rows. It never lists agent sessions, terminals, or any other tab as its own row, including for a project that owns exactly one workspace. Agent sessions live in the workspace tab strip (`WorkspaceDesktopTabsRow` on desktop, `MobileWorkspaceTabSwitcher` on compact).
+
+A workspace row still reflects its agents through the aggregate status bucket described below — that is the sidebar's only agent-derived signal.
+
+An earlier iteration projected each workspace's open agent tabs back into the sidebar and hid the desktop tab strip, so the same session appeared as both a sidebar row and a tab. If you are tempted to re-add per-agent sidebar rows, note the constraint that made it wrong: sidebar rows were derived from open tabs, so they could never be a reliable inventory of running agents (a root agent in an unvisited workspace has no tab yet, and subagents never auto-open). Tab reconciliation — `deriveWorkspaceAgentVisibility` and `reconcileWorkspaceTabs` — is what guarantees every active root agent has a tab, and it runs from the focused workspace screen.
+
 ## Workspace activity
 
 Agent lifecycle status stays literal: a parent agent is `idle` when its own turn is idle, even if a child is running.
@@ -80,6 +88,24 @@ parentAgentId === thisAgent.id  AND  !archivedAt
 Archived subagents disappear from the track, by design. To remove a subagent from the track without closing its tab, use the **archive button (X)** on the row — it opens a confirm dialog and archives the subagent on confirm. That same archive shows the subagent leave the track on every connected client.
 
 To keep the agent alive but remove it from the parent's track, use **detach**. The daemon clears the parent label, emits the normal agent update, and every client reclassifies the agent from subagent to root/sibling from that updated snapshot.
+
+### Claude in-process subagents: the task protocol
+
+A Claude `Task` subagent is **not** a Paseo agent record, so it never appears in the track above. It surfaces as a `sub_agent` tool call on the parent's timeline, which the agent context panel projects into its Subagents section (`collectAgentContextTimelineSubagents`).
+
+Two sources write that one card, and they must not fight over it:
+
+- `sidechain-tracker.ts` derives the per-tool action log from frames carrying `parent_tool_use_id`.
+- `subagent-task-tracker.ts` reads Claude's declarative announcements (`task_started` / `task_updated` / `task_progress` / `task_notification`) and owns identity and status. When the sidechain has a log it defers to it, so a foreground subagent keeps its richer log.
+
+Gotchas that are not obvious from the SDK types:
+
+- **A backgrounded subagent emits no frames carrying `parent_tool_use_id` at all.** Everything keyed off that field sees nothing for one, so it is visible only because the task protocol announces it. This is why the declarative source exists.
+- **Backgrounding resolves the blocking `Task` call immediately** with a "running in the background" `tool_result`. Treating that as the real outcome marks a live subagent completed and strands it — the exact bug that made background work invisible. `handleToolResult` defers to the task protocol while a declared task is still running; only a terminal `task_updated`/`task_notification` finalizes the card.
+- **Not every announced task is a subagent.** A backgrounded shell announces `task_type: "local_bash"` with a `tool_use_id` and no `subagent_type`; workflows announce `local_workflow`; ambient housekeeping sets `skip_transcript`. Filtering on the presence of a `tool_use_id` alone puts `sleep 20` in the subagent surfaces.
+- **Only `task_started` carries `tool_use_id`.** Status arrives keyed by `task_id`, so the task-id → tool-use-id map is the only way to route it. A status for a task that was never declared is dropped rather than creating a nameless row that never finishes.
+- **Task ids are session-scoped, not turn-scoped.** Cancelling a turn must not clear the routing table: a backgrounded child settles after the interrupt and still needs its card. Cancellation terminalizes only declared _foreground_ tasks (`cancelRunningForegroundTasks`), and a later `task_notification` is free to correct that guess. Backgrounded children are identified by `task_updated.patch.is_backgrounded`.
+- **`task_progress` fires once per tool use, not on a timer**, so it is an accurate live signal of where a subagent currently is. Its `summary` field requires the `agentProgressSummaries` query option, which Paseo enables.
 
 ## Why this shape
 

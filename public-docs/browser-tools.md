@@ -15,6 +15,7 @@ Shared concepts:
 - **`browserId`** identifies a tab. It comes from `browser_new_tab` or `browser_list_tabs` and is required by every tab-scoped tool.
 - **`ref`** identifies an element, e.g. `@e3`. Refs come from the latest `browser_snapshot` of the same tab and expire when the page changes — stale refs return an error instead of acting on the wrong element.
 - Every result reports **dialogs** the page opened during the command (alerts accepted; confirm/prompt/beforeunload dismissed).
+- **One browser per agent by default.** `browser_new_tab` reuses the tab that agent already opened — navigating it when you pass a `url` — so stopping an agent and prompting it again keeps working in the same browser instead of piling up tabs. Pass `fresh: true` when a task genuinely needs a second, independent tab — it stays independent, so later default calls keep returning to the agent's original tab rather than navigating the fresh one. If the previous tab was closed or cannot be navigated, a new one is created automatically.
 
 Arguments marked `?` are optional.
 
@@ -23,7 +24,7 @@ Arguments marked `?` are optional.
 | Tool                | Arguments                  | Purpose                                                                   |
 | ------------------- | -------------------------- | ------------------------------------------------------------------------- |
 | `browser_list_tabs` | —                          | List open tabs in the agent's workspace across connected hosts.           |
-| `browser_new_tab`   | `url?`                     | Open a tab in the background and return its `browserId`.                  |
+| `browser_new_tab`   | `url?, fresh?`             | Open a tab in the background and return its `browserId`.                  |
 | `browser_close_tab` | `browserId`                | Close a tab and clean up its webview.                                     |
 | `browser_resize`    | `browserId, width, height` | Resize the tab's viewport — check a layout at phone or tablet dimensions. |
 

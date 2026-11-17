@@ -690,6 +690,7 @@ export const ar: TranslationResources = {
         },
         archiveWarning: {
           title: 'الأرشيف "{{worktreeName}}"؟',
+          massTitle: "أرشفة {{count}} مساحة عمل تحتوي على عمل غير محفوظ؟",
           confirm: "أرشيف",
           cancel: "يلغي",
           uncommittedChanges: "تغييرات غير ملتزم بها",

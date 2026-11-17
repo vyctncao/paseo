@@ -584,7 +584,7 @@ describe("registerBrowserTools", () => {
     ]);
   });
 
-  test("new tab sends workspace in the request envelope", async () => {
+  test("new tab reuses the caller agent's browser by default", async () => {
     const harness = new BrowserToolHarness();
     harness.broker.setResponse(newTabPayload());
 
@@ -595,13 +595,31 @@ describe("registerBrowserTools", () => {
         agentId: "agent-1",
         cwd: "/repo",
         workspaceId: "wks_workspace_a",
+        reuseAgentBrowser: true,
         command: { command: "new_tab", args: { url: "https://example.com" } },
       },
     ]);
     expect(response.content).toEqual([
       {
         type: "text",
-        text: `Created browser tab browserId=${BROWSER_ID} url=https://example.com. Use this browserId for tab-scoped browser tools.`,
+        text: `Opened browser tab browserId=${BROWSER_ID} url=https://example.com. Use this browserId for tab-scoped browser tools.`,
+      },
+    ]);
+  });
+
+  test("new tab can explicitly request a fresh browser", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+
+    await harness.execute("browser_new_tab", { url: "https://example.com", fresh: true });
+
+    expect(harness.broker.calls).toEqual([
+      {
+        agentId: "agent-1",
+        cwd: "/repo",
+        workspaceId: "wks_workspace_a",
+        reuseAgentBrowser: false,
+        command: { command: "new_tab", args: { url: "https://example.com" } },
       },
     ]);
   });

@@ -15,7 +15,7 @@ describe("resolveWindowControlsPadding", () => {
     expect(
       resolveRawWindowControlsPadding({ isElectron: true, isMac: true, isFullscreen: false }),
     ).toEqual({
-      left: 78,
+      left: 86,
       right: 0,
       top: 45,
     });
@@ -42,7 +42,7 @@ describe("resolveWindowControlsPadding", () => {
         zoomFactor: 0.75,
       }),
     ).toEqual({
-      left: 104,
+      left: 86 / 0.75,
       right: 0,
       top: 60,
     });
@@ -57,7 +57,7 @@ describe("resolveWindowControlsPadding", () => {
         zoomFactor: 1.5,
       }),
     ).toEqual({
-      left: 52,
+      left: 86 / 1.5,
       right: 0,
       top: 30,
     });
@@ -86,7 +86,7 @@ describe("resolveWindowControlsPadding", () => {
         isFullscreen: false,
         zoomFactor,
       });
-      expect(padding.left * zoomFactor).toBeCloseTo(78);
+      expect(padding.left * zoomFactor).toBeCloseTo(86);
       expect(padding.top * zoomFactor).toBeCloseTo(45);
     }
   });
@@ -101,7 +101,7 @@ describe("resolveWindowControlsPadding", () => {
           zoomFactor,
         }),
       ).toEqual({
-        left: 78,
+        left: 86,
         right: 0,
         top: 45,
       });
@@ -126,6 +126,44 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: true,
         explorerOpen: false,
         focusModeEnabled: false,
+        isCompact: false,
+      }),
+    ).toEqual({
+      left: 80,
+      right: 48,
+      top: 0,
+    });
+  });
+
+  it("yields the header's left padding to the inline desktop sidebar when it is open", () => {
+    expect(
+      resolveWindowControlsPadding({
+        role: "header",
+        rawPadding,
+        sidebarClosed: false,
+        explorerOpen: false,
+        focusModeEnabled: false,
+        isCompact: false,
+      }),
+    ).toEqual({
+      left: 0,
+      right: 48,
+      top: 0,
+    });
+  });
+
+  it("pads a compact header away from mac traffic lights even when the sidebar is logically open", () => {
+    // Compact layouts render the sidebar as an overlay drawer instead of the inline
+    // rail, so nothing covers the traffic lights. `agentListOpen` still reports the
+    // persisted desktop preference, which defaults to open in Electron.
+    expect(
+      resolveWindowControlsPadding({
+        role: "header",
+        rawPadding,
+        sidebarClosed: false,
+        explorerOpen: false,
+        focusModeEnabled: false,
+        isCompact: true,
       }),
     ).toEqual({
       left: 80,
@@ -142,6 +180,7 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: true,
         explorerOpen: false,
         focusModeEnabled: false,
+        isCompact: false,
       }),
     ).toEqual({
       left: 0,
@@ -158,6 +197,7 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: false,
         explorerOpen: false,
         focusModeEnabled: true,
+        isCompact: false,
       }),
     ).toEqual({
       left: 80,
@@ -174,6 +214,7 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: true,
         explorerOpen: true,
         focusModeEnabled: true,
+        isCompact: false,
       }),
     ).toEqual({
       left: 0,

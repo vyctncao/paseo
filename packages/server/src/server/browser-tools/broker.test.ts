@@ -229,6 +229,806 @@ describe("BrowserToolsBroker", () => {
     });
   });
 
+  test("reuses the caller agent's browser across separate new-tab calls", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: { url: "https://one.example" } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://one.example",
+      },
+    });
+    await firstRequest;
+
+    const reusedRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: { url: "https://two.example" } },
+    });
+
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "list_tabs", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_ID,
+            workspaceId: "workspace-1",
+            url: "https://one.example",
+            title: "One",
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)).toEqual({
+        type: "browser.automation.execute.request",
+        // Inner calls carry derived ids so a late reply cannot resolve the outer request.
+        requestId: "req-2:reuse-navigate",
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+        command: {
+          command: "navigate",
+          args: { browserId: BROWSER_ID, url: "https://two.example" },
+        },
+      });
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: { command: "navigate", browserId: BROWSER_ID, url: "https://two.example" },
+    });
+
+    await expect(reusedRequest).resolves.toEqual({
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://two.example",
+      },
+    });
+    expect(
+      client.receivedRequests.filter((request) => request.command.command === "new_tab"),
+    ).toHaveLength(1);
+  });
+
+  test("fresh new-tab calls create separate browsers for the same agent", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const freshRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: false,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await expect(freshRequest).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("does not reuse another agent's browser in the same workspace", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const otherAgentRequest = broker.execute({
+      agentId: "agent-2",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await expect(otherAgentRequest).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("creates a replacement after the reused browser is closed", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const closeRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      requestId: "req-close",
+      command: { command: "close_tab", args: { browserId: BROWSER_ID } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-close",
+      ok: true,
+      result: { command: "close_tab", browserId: BROWSER_ID },
+    });
+    await closeRequest;
+
+    const replacementRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await expect(replacementRequest).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("creates a replacement when the browser was closed outside the broker", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const replacementRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "list_tabs", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+
+    await expect(replacementRequest).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("does not reuse the agent's browser from a different workspace", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const otherWorkspaceRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-2",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-2",
+        url: "https://example.com",
+      },
+    });
+    await expect(otherWorkspaceRequest).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("creates a tab when the reuse probe fails instead of failing the call", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await firstRequest;
+
+    const afterProbeFailure = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "list_tabs", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: false,
+      error: { code: "browser_timeout", message: "probe timed out", retryable: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "new_tab", args: {} });
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+
+    await expect(afterProbeFailure).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("a late reuse-probe reply cannot resolve the fall-through new tab", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const firstRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://one.example",
+      },
+    });
+    await firstRequest;
+
+    // The host never answers the probe in time, so the broker falls through to
+    // creating a tab while the probe reply is still in flight.
+    const pending = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      timeoutMs: 60,
+      command: { command: "new_tab", args: { url: "https://two.example" } },
+    });
+    const probeRequest = client.receivedRequests.at(-1);
+    expect(probeRequest?.command.command).toBe("list_tabs");
+
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command.command).toBe("new_tab");
+    });
+
+    // The slow host finally answers the probe; it must not satisfy the new tab.
+    if (probeRequest) {
+      client.resolveRequestWith(broker, probeRequest, {
+        requestId: probeRequest.requestId,
+        ok: true,
+        result: {
+          command: "list_tabs",
+          tabs: [
+            {
+              browserId: BROWSER_ID,
+              workspaceId: "workspace-1",
+              url: "https://one.example",
+              title: "One",
+            },
+          ],
+        },
+      });
+    }
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://two.example",
+      },
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("a fresh tab does not become the agent's reusable browser", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const primary = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: { url: "https://app.local" } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://app.local",
+      },
+    });
+    await primary;
+
+    const freshTab = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: false,
+      requestId: "req-fresh",
+      command: { command: "new_tab", args: { url: "https://docs.local" } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-fresh",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://docs.local",
+      },
+    });
+    await freshTab;
+
+    // The next default call must return to the original tab, not the fresh one.
+    const backToPrimary = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: { url: "https://app.local/page2" } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_ID,
+            workspaceId: "workspace-1",
+            url: "https://app.local",
+            title: "App",
+          },
+          {
+            browserId: SECOND_BROWSER_ID,
+            workspaceId: "workspace-1",
+            url: "https://docs.local",
+            title: "Docs",
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command).toEqual({
+        command: "navigate",
+        args: { browserId: BROWSER_ID, url: "https://app.local/page2" },
+      });
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: { command: "navigate", browserId: BROWSER_ID, url: "https://app.local/page2" },
+    });
+
+    await expect(backToPrimary).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: BROWSER_ID },
+    });
+  });
+
+  test("closing a fresh tab leaves the agent's reusable browser intact", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const primary = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://app.local",
+      },
+    });
+    await primary;
+
+    const freshTab = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: false,
+      requestId: "req-fresh",
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-fresh",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://docs.local",
+      },
+    });
+    await freshTab;
+
+    const close = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      requestId: "req-close",
+      command: { command: "close_tab", args: { browserId: SECOND_BROWSER_ID } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-close",
+      ok: true,
+      result: { command: "close_tab", browserId: SECOND_BROWSER_ID },
+    });
+    await close;
+
+    const reuse = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: {} },
+    });
+    expect(client.receivedRequests.at(-1)?.command).toEqual({ command: "list_tabs", args: {} });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_ID,
+            workspaceId: "workspace-1",
+            url: "https://app.local",
+            title: "App",
+          },
+        ],
+      },
+    });
+
+    await expect(reuse).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: BROWSER_ID },
+    });
+  });
+
+  test("a failed reuse navigation falls back to a new tab instead of wedging", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const primary = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://app.local",
+      },
+    });
+    await primary;
+
+    const wedged = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: { url: "https://slow.local" } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_ID,
+            workspaceId: "workspace-1",
+            url: "https://app.local",
+            title: "App",
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command.command).toBe("navigate");
+    });
+    // The page load hangs, so navigation fails even though the tab is still listed.
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: false,
+      error: { code: "browser_timeout", message: "navigate timed out", retryable: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(client.receivedRequests.at(-1)?.command).toEqual({
+        command: "new_tab",
+        args: { url: "https://slow.local" },
+      });
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://slow.local",
+      },
+    });
+
+    await expect(wedged).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
+  test("does not adopt another agent's browser after acting on it", async () => {
+    const broker = createBroker();
+    const client = new FakeBrowserHostClient("host-1");
+    broker.registerClient(client);
+
+    const ownerRequest = broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      command: { command: "new_tab", args: {} },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await ownerRequest;
+
+    // A second agent discovers that tab through list_tabs and interacts with it.
+    const snapshotRequest = broker.execute({
+      agentId: "agent-2",
+      workspaceId: "workspace-1",
+      requestId: "req-snapshot",
+      command: { command: "snapshot", args: { browserId: BROWSER_ID } },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-snapshot",
+      ok: true,
+      result: {
+        command: "snapshot",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+        title: "Example",
+        format: "aria-yaml",
+        snapshot: "- document",
+        truncated: false,
+        stats: { nodeCount: 1, refCount: 0, textLength: 10 },
+      },
+    });
+    await snapshotRequest;
+
+    const secondAgentTab = broker.execute({
+      agentId: "agent-2",
+      workspaceId: "workspace-1",
+      reuseAgentBrowser: true,
+      requestId: "req-2",
+      command: { command: "new_tab", args: { url: "https://two.example" } },
+    });
+
+    expect(client.receivedRequests.at(-1)?.command).toEqual({
+      command: "new_tab",
+      args: { url: "https://two.example" },
+    });
+    client.resolveLatestWith(broker, {
+      requestId: "req-2",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://two.example",
+      },
+    });
+    await expect(secondAgentTab).resolves.toMatchObject({
+      ok: true,
+      result: { command: "new_tab", browserId: SECOND_BROWSER_ID },
+    });
+  });
+
   test("new tabs target the most recently registered host and tab commands stay with that host", async () => {
     const broker = createBroker();
     const firstHost = new FakeBrowserHostClient("host-1");

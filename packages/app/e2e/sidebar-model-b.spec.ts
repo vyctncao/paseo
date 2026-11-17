@@ -5,9 +5,8 @@ import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { getServerId } from "./helpers/server-id";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
-// Codex-style sidebar shape: a single-workspace project lists its chats directly;
-// multi-workspace projects retain workspace rows for branch/worktree ownership.
-// Utility tabs such as terminals never become sidebar chat rows.
+// The sidebar is workspace navigation. Agent sessions and utility surfaces stay in
+// the workspace tab strip instead of becoming sidebar rows.
 
 function workspaceRow(page: Page, workspaceId: string) {
   return page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`);
@@ -82,7 +81,7 @@ test.describe("Model B sidebar shape", () => {
     }
   });
 
-  test("a single-workspace project lists chats directly without a duplicate workspace row", async ({
+  test("a single-workspace project shows its workspace while agents stay in tabs", async ({
     page,
   }) => {
     const mock = await seedMockAgentWorkspace({
@@ -93,11 +92,12 @@ test.describe("Model B sidebar shape", () => {
     try {
       await openAgentRoute(page, { workspaceId: mock.workspaceId, agentId: mock.agentId });
 
-      // The project is the visible parent and its agent tab becomes a direct chat
-      // row. The redundant sole workspace stays out of the list.
-      await expect(workspaceRow(page, mock.workspaceId)).toHaveCount(0);
-      await expect(page.locator('[data-testid^="sidebar-agent-row-"]')).toHaveCount(1);
+      await expect(workspaceRow(page, mock.workspaceId)).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('[data-testid^="sidebar-agent-row-"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="sidebar-terminal-row-"]')).toHaveCount(0);
+      await expect(page.getByTestId(`workspace-tab-agent_${mock.agentId}`)).toBeVisible({
+        timeout: 30_000,
+      });
     } finally {
       await mock.cleanup();
     }

@@ -717,6 +717,7 @@ export const es: TranslationResources = {
         },
         archiveWarning: {
           title: '¿Archivo "{{worktreeName}}"?',
+          massTitle: "¿Archivar {{count}} espacios de trabajo con trabajo sin guardar?",
           confirm: "Archivo",
           cancel: "Cancelar",
           uncommittedChanges: "Cambios no confirmados",

@@ -3725,7 +3725,6 @@ function WorkspaceScreenContent({
 
       {shouldRenderDesktopPaneFallback ? (
         <WorkspaceDesktopTabsRow
-          hidden
           paneId={focusedPaneIdOrUndefined}
           isFocused={isRouteFocused}
           tabs={desktopTabRowItems}

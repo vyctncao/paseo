@@ -36,7 +36,6 @@ import type { Theme } from "@/styles/theme";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
-import { SidebarWorkspaceAgentList } from "@/components/sidebar/sidebar-workspace-agent-list";
 import { SidebarArchivedAgents } from "@/components/sidebar/sidebar-archived-agents";
 import {
   Archive,
@@ -112,7 +111,6 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attention";
 import type { PrHint } from "@/git/use-pr-status-query";
 import {
-  buildSidebarProjectChildrenModel,
   buildSidebarProjectRowModel,
   splitStandaloneTasksFromProjects,
   type SidebarProjectHostTarget,
@@ -1665,12 +1663,6 @@ function WorkspaceRowWithMenu({
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
       />
-      <SidebarWorkspaceAgentList
-        serverId={workspace.serverId}
-        workspaceId={workspace.workspaceId}
-        branch={workspace.currentBranch}
-        displayName={workspace.name}
-      />
       <AdaptiveRenameModal
         visible={isRenameOpen}
         title={t("sidebar.workspace.rename.title")}
@@ -1877,8 +1869,6 @@ function ProjectBlock({
       }),
     [collapsed, project, supportsMultiplicityByServerId],
   );
-  const childrenModel = useMemo(() => buildSidebarProjectChildrenModel(project), [project]);
-
   const active = isProjectSelectedByRoute({
     selection: activeWorkspaceSelection,
     project,
@@ -2013,17 +2003,7 @@ function ProjectBlock({
 
   let projectChildren = null;
   if (!collapsed) {
-    if (childrenModel.kind === "direct_chats") {
-      projectChildren = (
-        <SidebarWorkspaceAgentList
-          serverId={childrenModel.workspace.serverId}
-          workspaceId={childrenModel.workspace.workspaceId}
-          branch={null}
-          displayName={displayName}
-          nesting="project"
-        />
-      );
-    } else if (project.workspaces.length > 0) {
+    if (project.workspaces.length > 0) {
       projectChildren = (
         <DraggableList
           testID={`sidebar-workspace-list-${project.projectKey}`}

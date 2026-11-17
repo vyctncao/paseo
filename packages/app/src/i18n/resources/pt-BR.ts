@@ -708,6 +708,7 @@ export const ptBR: TranslationResources = {
         },
         archiveWarning: {
           title: 'Arquivar "{{worktreeName}}"?',
+          massTitle: "Arquivar {{count}} espaços de trabalho com trabalho não salvo?",
           confirm: "Arquivar",
           cancel: "Cancelar",
           uncommittedChanges: "Alterações sem commit",

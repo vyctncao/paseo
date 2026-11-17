@@ -4,7 +4,6 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import {
-  buildSidebarProjectChildrenModel,
   buildSidebarProjectRowModel,
   resolveSidebarProjectIconTarget,
   splitStandaloneTasksFromProjects,
@@ -234,36 +233,6 @@ describe("buildSidebarProjectRowModel", () => {
         kind: "new_workspace",
         target: { serverId: "srv", iconWorkingDir: "/repo" },
       },
-    });
-  });
-});
-
-describe("buildSidebarProjectChildrenModel", () => {
-  it("places a sole workspace's chats directly beneath the project", () => {
-    const onlyWorkspace = workspace({ workspaceId: "ws-only", name: "paseo" });
-
-    expect(buildSidebarProjectChildrenModel(project({ workspaces: [onlyWorkspace] }))).toEqual({
-      kind: "direct_chats",
-      workspace: onlyWorkspace,
-    });
-  });
-
-  it("keeps workspace rows when a project has multiple workspaces", () => {
-    expect(
-      buildSidebarProjectChildrenModel(
-        project({
-          workspaces: [
-            workspace({ workspaceId: "ws-main" }),
-            workspace({ workspaceId: "ws-feature", workspaceKind: "worktree" }),
-          ],
-        }),
-      ),
-    ).toEqual({ kind: "workspace_rows" });
-  });
-
-  it("leaves an empty project available for its new-workspace row", () => {
-    expect(buildSidebarProjectChildrenModel(project({ workspaces: [] }))).toEqual({
-      kind: "workspace_rows",
     });
   });
 });

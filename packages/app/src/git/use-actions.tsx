@@ -980,6 +980,7 @@ function getWorktreeArchiveWarningLabels(
 ): WorktreeArchiveWarningLabels {
   return {
     title: (worktreeName) => t("workspace.git.actions.archiveWarning.title", { worktreeName }),
+    massTitle: (count) => t("workspace.git.actions.archiveWarning.massTitle", { count }),
     confirm: t("workspace.git.actions.archiveWarning.confirm"),
     cancel: t("workspace.git.actions.archiveWarning.cancel"),
     uncommittedChanges: t("workspace.git.actions.archiveWarning.uncommittedChanges"),

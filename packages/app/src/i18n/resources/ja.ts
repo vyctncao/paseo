@@ -702,6 +702,7 @@ export const ja: TranslationResources = {
         },
         archiveWarning: {
           title: '"{{worktreeName}}"をアーカイブしますか？',
+          massTitle: "未保存の作業がある{{count}}個のワークスペースをアーカイブしますか？",
           confirm: "アーカイブ",
           cancel: "キャンセル",
           uncommittedChanges: "未コミットの変更",

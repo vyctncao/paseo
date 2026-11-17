@@ -18,6 +18,8 @@ export const COMPACT_FORM_FACTOR_WIDTH = 500;
 // Desktop app constants for macOS traffic light buttons
 // These buttons (close/minimize/maximize) overlay the top-left corner
 export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
+/** Physical breathing room between macOS traffic lights and interactive app chrome. */
+export const DESKTOP_TRAFFIC_LIGHT_GUTTER = 8;
 export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
 // Windows/Linux window controls (minimize/maximize/close) — top-right

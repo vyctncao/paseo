@@ -37,6 +37,7 @@ import {
 import { CLAUDE_ULTRACODE_THINKING_OPTION_ID } from "./model-manifest.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
+import { ClaudeSubagentTaskTracker } from "./subagent-task-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
@@ -1715,6 +1716,16 @@ function readLegacyResultUsageTokens(usage: unknown): number | undefined {
   return usageRecord ? readUsageTokenTotal(usageRecord) : undefined;
 }
 
+function readToolResultCallId(
+  block: ClaudeContentChunk,
+  entry: ToolUseCacheEntry | undefined,
+): string | null {
+  if (typeof block.tool_use_id === "string" && block.tool_use_id.length > 0) {
+    return block.tool_use_id;
+  }
+  return entry?.id ?? null;
+}
+
 function isClaudeSubagentToolName(name: string | undefined): boolean {
   return name === "Task" || name === "Agent";
 }
@@ -1895,6 +1906,10 @@ class ClaudeAgentSession implements AgentSession {
   private readonly timelineAssembler = new TimelineAssembler();
   private readonly sidechainTracker = new ClaudeSidechainTracker({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+  });
+  private readonly subagentTaskTracker = new ClaudeSubagentTaskTracker({
+    getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+    getSidechainLog: (toolUseId) => this.sidechainTracker.getLog(toolUseId),
   });
   private persistedHistory: PersistedTimelineEntry[] = [];
   private historyPending = false;
@@ -2346,6 +2361,7 @@ class ClaudeAgentSession implements AgentSession {
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.sidechainTracker.clear();
+    this.subagentTaskTracker.reset();
     this.input?.end();
     this.query?.close?.();
     await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
@@ -2925,6 +2941,10 @@ class ClaudeAgentSession implements AgentSession {
     const base: ClaudeOptions = {
       cwd: this.config.cwd,
       includePartialMessages: true,
+      // Periodic present-tense summaries of what each subagent is doing, carried on
+      // `task_progress.summary`. This is the only running-activity signal a backgrounded subagent
+      // produces, since it emits no sidechain frames.
+      agentProgressSummaries: true,
       permissionMode: this.currentMode,
       // Dynamic mode switching can recreate the underlying Claude query. Keep the
       // bypass launch capability available so later setPermissionMode("bypassPermissions")
@@ -3586,6 +3606,14 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const events: AgentStreamEvent[] = [];
+
+    // Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
+    // read rather than inferred from sidechain frames. A backgrounded subagent emits no frame
+    // carrying parent_tool_use_id at all, so this is the only place it becomes visible.
+    for (const item of this.subagentTaskTracker.observe(message)) {
+      events.push({ type: "timeline", item, provider: "claude" });
+    }
+
     if (message.type !== "system") {
       const sessionCapture = this.captureSessionIdFromMessage(message);
       if (sessionCapture.notice) {
@@ -3706,7 +3734,13 @@ class ClaudeAgentSession implements AgentSession {
       this.appendTaskNotificationEvents(message, events);
       return;
     }
-    if (message.subtype === "task_progress") {
+    // task_started/task_updated/task_progress carry no transcript content of their own; the
+    // subagent task tracker has already turned them into Task card updates.
+    if (
+      message.subtype === "task_progress" ||
+      message.subtype === "task_started" ||
+      message.subtype === "task_updated"
+    ) {
       return;
     }
   }
@@ -3715,11 +3749,18 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
   ): void {
-    // TODO: subagent timelines are best-effort. Subagent task_notifications
-    // arrive without parent_tool_use_id but with tool_use_id pointing at the
-    // the parent's subagent tool call, so they slip past the sidechain router and pollute
-    // the parent timeline. Drop them here; eventually thread them into the
-    // parent tool call's sub_agent log instead.
+    // Subagent task_notifications arrive without parent_tool_use_id but with tool_use_id pointing
+    // at the parent's subagent tool call, so they slip past the sidechain router and would
+    // otherwise pollute the parent timeline with a second, unrelated row. The task tracker has
+    // already terminalized the real Task card from this notification, so drop the synthetic one —
+    // by declaration when the task protocol knows this task, and by the tool cache for releases
+    // that predate it.
+    if (
+      typeof message.task_id === "string" &&
+      this.subagentTaskTracker.isDeclaredTaskId(message.task_id)
+    ) {
+      return;
+    }
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
     if (isClaudeSubagentToolName(cachedTool?.name)) {
@@ -4100,6 +4141,13 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.toolUseCache.clear();
     this.sidechainTracker.clear();
+    // The task protocol's routing table is session-scoped, so it is deliberately NOT reset here:
+    // the turn ended, the session did not. Wiping it would strand every task id the session still
+    // holds, so a backgrounded child that settles after the interrupt would find no card to land
+    // on. Emitted last so the richer sub_agent card wins over the generic canceled tool call.
+    for (const item of this.subagentTaskTracker.cancelRunningForegroundTasks()) {
+      this.enqueueTimeline(item);
+    }
   }
 
   private pushToolCall(
@@ -4416,15 +4464,32 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  /**
+   * Backgrounding a subagent resolves its blocking Task call immediately with a "running in the
+   * background" result while the child keeps working. Finalizing on that marks a live subagent
+   * completed and strands it, so the task protocol keeps ownership of the card and terminalizes it
+   * when the child actually settles.
+   */
+  private deferToolResultToTaskProtocol(block: ClaudeContentChunk, callId: string | null): boolean {
+    if (!callId || !this.subagentTaskTracker.isAwaitingTaskOutcome(callId)) {
+      return false;
+    }
+    if (typeof block.tool_use_id === "string") {
+      this.toolUseCache.delete(block.tool_use_id);
+    }
+    return true;
+  }
+
   private handleToolResult(block: ClaudeContentChunk, items: AgentTimelineItem[]): void {
     const entry =
       typeof block.tool_use_id === "string" ? this.toolUseCache.get(block.tool_use_id) : undefined;
     const blockToolName = typeof block.tool_name === "string" ? block.tool_name : undefined;
     const toolName = entry?.name ?? blockToolName ?? "tool";
-    const callId =
-      typeof block.tool_use_id === "string" && block.tool_use_id.length > 0
-        ? block.tool_use_id
-        : (entry?.id ?? null);
+    const callId = readToolResultCallId(block, entry);
+
+    if (this.deferToolResultToTaskProtocol(block, callId)) {
+      return;
+    }
 
     // Pull image blocks out of the result so base64 never reaches the tool output, and render each
     // one as an assistant_message markdown image after the tool_call (matching how Codex emits).
