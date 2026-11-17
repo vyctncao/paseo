@@ -25,6 +25,7 @@ const providerPreferencesSchema = z.object({
 const formPreferencesSchema = z.object({
   provider: z.string().optional(),
   providerPreferences: z.record(z.string(), providerPreferencesSchema).optional(),
+  workspaceBaseRefByProject: z.record(z.string(), z.string()).optional(),
   favoriteModels: z
     .array(
       z.object({
@@ -128,6 +129,53 @@ export function mergeCreateAgentSelectionPreferences(args: {
       ...(args.featureValues ? { featureValues: args.featureValues } : {}),
     },
   });
+}
+
+function workspaceBaseRefPreferenceKey(input: {
+  serverId: string;
+  projectKey: string;
+}): string {
+  return JSON.stringify([input.serverId.trim(), input.projectKey.trim()]);
+}
+
+export function getWorkspaceBaseRefPreference(input: {
+  preferences: FormPreferences;
+  serverId: string;
+  projectKey: string | null | undefined;
+}): string | null {
+  const serverId = input.serverId.trim();
+  const projectKey = input.projectKey?.trim() ?? "";
+  if (!serverId || !projectKey) {
+    return null;
+  }
+
+  const value =
+    input.preferences.workspaceBaseRefByProject?.[
+      workspaceBaseRefPreferenceKey({ serverId, projectKey })
+    ]?.trim() ?? "";
+  return value || null;
+}
+
+export function mergeWorkspaceBaseRefPreference(input: {
+  preferences: FormPreferences;
+  serverId: string;
+  projectKey: string;
+  baseRef: string;
+}): FormPreferences {
+  const serverId = input.serverId.trim();
+  const projectKey = input.projectKey.trim();
+  const baseRef = input.baseRef.trim();
+  if (!serverId || !projectKey || !baseRef) {
+    return input.preferences;
+  }
+
+  return {
+    ...input.preferences,
+    workspaceBaseRefByProject: {
+      ...input.preferences.workspaceBaseRefByProject,
+      [workspaceBaseRefPreferenceKey({ serverId, projectKey })]: baseRef,
+    },
+  };
 }
 
 export function buildFavoriteModelKey(input: FavoriteModelPreference): string {

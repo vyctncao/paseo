@@ -685,6 +685,33 @@ describe("deriveModesFromACP", () => {
     });
   });
 
+  test("marks an ACP permission bypass mode as dangerous and unattended", () => {
+    const result = deriveModesFromACP([], {
+      availableModes: [
+        {
+          id: "bypassPermissions",
+          name: "Bypass Permissions",
+          description: "Skip permission prompts",
+        },
+      ],
+      currentModeId: "bypassPermissions",
+    });
+
+    expect(result).toEqual({
+      modes: [
+        {
+          id: "bypassPermissions",
+          label: "Bypass Permissions",
+          description: "Skip permission prompts",
+          icon: "ShieldAlert",
+          colorTier: "dangerous",
+          isUnattended: true,
+        },
+      ],
+      currentModeId: "bypassPermissions",
+    });
+  });
+
   test("falls back to config options when explicit mode state is absent", () => {
     const result = deriveModesFromACP([{ id: "fallback", label: "Fallback" }], null, [
       {

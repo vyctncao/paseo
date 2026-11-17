@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
-import type { ProviderUsage, ProviderUsageBalance } from "../../../server/messages.js";
+import type {
+  ProviderUsage,
+  ProviderUsageBalance,
+  ProviderUsageWindow,
+} from "../../../server/messages.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -11,6 +15,7 @@ import {
   balanceToneFromRemaining,
   fetchProviderApi,
   unavailableUsage,
+  windowFromUsedPct,
 } from "../usage.js";
 
 const GrokUsageResponseSchema = z.object({
@@ -26,6 +31,14 @@ const GrokUsageResponseSchema = z.object({
           val: ApiNumberSchema.optional(),
         })
         .nullish(),
+      creditUsagePercent: ApiNumberSchema.optional(),
+      currentPeriod: z
+        .object({
+          type: ApiOptionalStringSchema,
+          start: ApiOptionalStringSchema,
+          end: ApiOptionalStringSchema,
+        })
+        .nullish(),
       billingPeriodEnd: ApiOptionalStringSchema,
     })
     .nullish(),
@@ -35,6 +48,58 @@ const GrokUsageResponseSchema = z.object({
     })
     .nullish(),
 });
+
+type GrokUsageResponse = z.infer<typeof GrokUsageResponseSchema>;
+
+function creditWindowLabel(periodType: string | undefined): string {
+  switch (periodType) {
+    case "USAGE_PERIOD_TYPE_DAILY":
+      return "Daily credits";
+    case "USAGE_PERIOD_TYPE_WEEKLY":
+      return "Weekly credits";
+    case "USAGE_PERIOD_TYPE_MONTHLY":
+      return "Monthly credits";
+    default:
+      return "Credits";
+  }
+}
+
+function creditWindows(resp: GrokUsageResponse): ProviderUsageWindow[] {
+  const creditUsagePercent = resp.config?.creditUsagePercent ?? null;
+  if (creditUsagePercent === null) return [];
+
+  return [
+    windowFromUsedPct({
+      id: "current_period_credits",
+      label: creditWindowLabel(resp.config?.currentPeriod?.type),
+      utilizationPct: creditUsagePercent,
+      resetsAt: resp.config?.currentPeriod?.end ?? resp.config?.billingPeriodEnd ?? null,
+    }),
+  ];
+}
+
+function creditBalances(resp: GrokUsageResponse): ProviderUsageBalance[] {
+  if (resp.config?.creditUsagePercent != null) return [];
+
+  const monthlyLimit = resp.config?.monthlyLimit?.val ?? null;
+  const creditUsage = resp.config?.used?.val ?? resp.usage?.creditUsage ?? null;
+  if (monthlyLimit === null && creditUsage === null) return [];
+
+  const remaining =
+    monthlyLimit !== null && creditUsage !== null ? Math.max(0, monthlyLimit - creditUsage) : null;
+  return [
+    {
+      id: "monthly_credits",
+      label: "Monthly credits",
+      used: creditUsage,
+      remaining,
+      limit: monthlyLimit,
+      unit: "credits",
+      resetsAt: resp.config?.billingPeriodEnd ?? null,
+      tone: balanceToneFromRemaining(remaining),
+    },
+  ];
+}
 
 const GrokAuthEntrySchema = z.object({
   access_token: z.string().optional(),
@@ -71,7 +136,7 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
 
     const res = await fetchProviderApi(
       this.fetchApi,
-      "https://cli-chat-proxy.grok.com/v1/billing",
+      "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -87,33 +152,13 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
     }
 
     const resp = GrokUsageResponseSchema.parse(await res.json());
-    const monthlyLimit = resp.config?.monthlyLimit?.val ?? null;
-    const creditUsage = resp.config?.used?.val ?? resp.usage?.creditUsage ?? null;
-    const balances: ProviderUsageBalance[] = [];
-    if (monthlyLimit !== null || creditUsage !== null) {
-      const remaining =
-        monthlyLimit !== null && creditUsage !== null
-          ? Math.max(0, monthlyLimit - creditUsage)
-          : null;
-      balances.push({
-        id: "monthly_credits",
-        label: "Monthly credits",
-        used: creditUsage,
-        remaining,
-        limit: monthlyLimit,
-        unit: "credits",
-        resetsAt: resp.config?.billingPeriodEnd ?? null,
-        tone: balanceToneFromRemaining(remaining),
-      });
-    }
-
     return {
       providerId: this.providerId,
       displayName: this.displayName,
       status: "available",
       planLabel: null,
-      windows: [],
-      balances,
+      windows: creditWindows(resp),
+      balances: creditBalances(resp),
       details: [],
       error: null,
     };

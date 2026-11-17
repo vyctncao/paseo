@@ -405,6 +405,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         logger,
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
+        discoverSdkModels: async () => [],
       });
       const { models } = await client.fetchCatalog({
         scope: "workspace",
@@ -445,6 +446,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         logger,
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
+        discoverSdkModels: async () => [],
       });
       const { models } = await client.fetchCatalog({
         scope: "workspace",

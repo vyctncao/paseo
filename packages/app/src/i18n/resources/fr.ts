@@ -1134,6 +1134,7 @@ export const fr: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "Choisir un dossier…",
     placeholder: "Tapez un chemin de répertoire...",
     opening: "Projet d'ouverture...",
     searching: "Recherche en cours...",

@@ -26,8 +26,8 @@ interface GeminiQuotaProviderOptions {
 
 /**
  * Gemini API-key quotas do not expose consumed allowance through the public API.
- * Keep the connected provider visible and name the authoritative usage surface
- * instead of silently dropping it from Plan Usage.
+ * Keep the connected provider visible and explain why it cannot render a meter
+ * instead of making the Google AI Studio label look like live usage data.
  */
 export class GeminiQuotaProvider implements ProviderUsageFetcher {
   readonly providerId = "gemini";
@@ -56,8 +56,8 @@ export class GeminiQuotaProvider implements ProviderUsageFetcher {
       details: [
         {
           id: "usage_source",
-          label: "Usage",
-          value: usesApiKey ? "Google AI Studio" : "Gemini CLI /model",
+          label: "Live usage",
+          value: usesApiKey ? "Not exposed for API keys" : "Use Gemini CLI /stats model",
         },
       ],
       error: null,

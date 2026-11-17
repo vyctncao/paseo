@@ -5709,14 +5709,14 @@ function buildCodexThinkingOptionMap(
         typeof entry?.description === "string" && entry.description.trim().length > 0
           ? entry.description
           : undefined;
-      thinkingById.set(id, { id, label: id, description });
+      thinkingById.set(id, { id, label: formatCodexThinkingOptionLabel(id), description });
     }
   }
 
   if (resolvedDefaultReasoningEffort && !thinkingById.has(resolvedDefaultReasoningEffort)) {
     thinkingById.set(resolvedDefaultReasoningEffort, {
       id: resolvedDefaultReasoningEffort,
-      label: resolvedDefaultReasoningEffort,
+      label: formatCodexThinkingOptionLabel(resolvedDefaultReasoningEffort),
       description:
         configuredDefaultThinkingOptionId === resolvedDefaultReasoningEffort
           ? "Configured default reasoning effort"
@@ -5724,6 +5724,18 @@ function buildCodexThinkingOptionMap(
     });
   }
   return thinkingById;
+}
+
+export function formatCodexThinkingOptionLabel(id: string): string {
+  const labels: Record<string, string> = {
+    minimal: "Minimal",
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+    xhigh: "Ultra Code (xhigh)",
+    max: "Max",
+  };
+  return labels[id] ?? id;
 }
 
 function resolveSkillDescription(skill: Record<string, unknown>): string {

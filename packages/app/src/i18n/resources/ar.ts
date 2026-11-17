@@ -1096,6 +1096,7 @@ export const ar: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "اختيار مجلد…",
     placeholder: "اكتب مسار الدليل...",
     opening: "افتتاح المشروع...",
     searching: "جارٍ البحث...",

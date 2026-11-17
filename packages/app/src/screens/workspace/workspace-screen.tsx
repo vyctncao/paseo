@@ -1021,12 +1021,14 @@ function WorkspaceHeaderUtilityActions({
   isMobile,
   showBrowser,
   terminalDisabled,
+  onCreateAgent,
   onCreateTerminal,
   onCreateBrowser,
 }: {
   isMobile: boolean;
   showBrowser: boolean;
   terminalDisabled: boolean;
+  onCreateAgent: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
 }) {
@@ -1037,6 +1039,23 @@ function WorkspaceHeaderUtilityActions({
 
   return (
     <>
+      <HeaderToggleButton
+        testID="workspace-header-new-agent-tab"
+        onPress={onCreateAgent}
+        tooltipLabel={t("workspace.tabs.actions.newAgent")}
+        tooltipKeys={EMPTY_SHORTCUT_KEYS}
+        tooltipSide="bottom"
+        style={styles.compactHeaderActionButton}
+        accessibilityRole="button"
+        accessibilityLabel={t("workspace.tabs.actions.newAgent")}
+      >
+        {({ hovered, pressed }) => (
+          <ThemedSquarePen
+            size={16}
+            uniProps={hovered || pressed ? foregroundColorMapping : mutedColorMapping}
+          />
+        )}
+      </HeaderToggleButton>
       <HeaderToggleButton
         testID="workspace-header-split-terminal"
         disabled={terminalDisabled}
@@ -1728,7 +1747,7 @@ interface WorkspaceUtilitySplitActionsInput {
     },
   ) => string | null;
   createTerminal: (input?: { paneId?: string; profile?: TerminalProfileInput }) => void;
-  createBrowser: (input?: { paneId?: string }) => void;
+  createBrowser: (input?: { paneId?: string; initialUrl?: string }) => void;
 }
 
 function useWorkspaceUtilitySplitActions({
@@ -1760,15 +1779,23 @@ function useWorkspaceUtilitySplitActions({
     },
     [createTerminal, persistenceKey, splitWorkspacePaneEmpty, targetPaneId],
   );
-  const createBrowserSplit = useCallback(() => {
-    openWorkspaceUtilitySplit({
-      workspaceKey: persistenceKey,
-      targetPaneId,
-      position: "right",
-      splitPaneEmpty: splitWorkspacePaneEmpty,
-      openInPane: (paneId) => createBrowser(paneId ? { paneId } : undefined),
-    });
-  }, [createBrowser, persistenceKey, splitWorkspacePaneEmpty, targetPaneId]);
+  const createBrowserSplit = useCallback(
+    (input?: { paneId?: string; initialUrl?: string }) => {
+      openWorkspaceUtilitySplit({
+        workspaceKey: persistenceKey,
+        targetPaneId: input?.paneId ?? targetPaneId,
+        position: "right",
+        fallbackToFocusedPane: false,
+        splitPaneEmpty: splitWorkspacePaneEmpty,
+        openInPane: (paneId) =>
+          createBrowser({
+            ...(input?.initialUrl ? { initialUrl: input.initialUrl } : {}),
+            ...(paneId ? { paneId } : {}),
+          }),
+      });
+    },
+    [createBrowser, persistenceKey, splitWorkspacePaneEmpty, targetPaneId],
+  );
 
   return isMobile
     ? {
@@ -2557,14 +2584,16 @@ function WorkspaceScreenContent({
   const handleCreateTerminal = useStableEvent(createTerminal);
 
   const handleCreateBrowserTab = useCallback(
-    (input?: { paneId?: string }) => {
+    (input?: { paneId?: string; initialUrl?: string }) => {
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
       if (input?.paneId) {
         focusWorkspacePane(persistenceKey, input.paneId);
       }
-      const { browserId } = createWorkspaceBrowser();
+      const { browserId } = createWorkspaceBrowser({
+        initialUrl: input?.initialUrl,
+      });
       openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
     },
     [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
@@ -2578,16 +2607,13 @@ function WorkspaceScreenContent({
     createTerminal: handleCreateTerminal,
     createBrowser: handleCreateBrowserTab,
   });
+  const handleCreateBrowserSplit = workspaceUtilitySplitActions.createBrowser;
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
-      if (!persistenceKey || !getIsElectron()) {
-        return;
-      }
-      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
-      openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+      handleCreateBrowserSplit({ initialUrl: url });
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [handleCreateBrowserSplit],
   );
 
   useDesktopBrowserNewTabRequests({
@@ -3408,6 +3434,7 @@ function WorkspaceScreenContent({
           isMobile={isMobile}
           showBrowser={showCreateBrowserTab}
           terminalDisabled={createTerminalDisabled}
+          onCreateAgent={handleCreateDraftTab}
           onCreateTerminal={workspaceUtilitySplitActions.createTerminal}
           onCreateBrowser={workspaceUtilitySplitActions.createBrowser}
         />
@@ -3537,6 +3564,7 @@ function WorkspaceScreenContent({
       isMobile,
       createTerminalDisabled,
       showCreateBrowserTab,
+      handleCreateDraftTab,
       workspaceUtilitySplitActions.createTerminal,
       workspaceUtilitySplitActions.createBrowser,
       workspaceDescriptor,
@@ -3744,7 +3772,7 @@ function WorkspaceScreenContent({
           onCloseOtherTabs={handleCloseOtherTabs}
           onCreateDraftTab={handleCreateDraftTab}
           onCreateTerminalTab={handleCreateTerminal}
-          onCreateBrowserTab={handleCreateBrowserTab}
+          onCreateBrowserTab={handleCreateBrowserSplit}
           showCreateBrowserTab={showCreateBrowserTab}
           disableCreateTerminal={createTerminalMutation.isPending}
           isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}

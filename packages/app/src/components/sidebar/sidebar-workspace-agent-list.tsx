@@ -1,11 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useCodexPets } from "@/hooks/use-codex-pets";
-import {
-  useServerHttpAuthorizationHeader,
-  useServerHttpBaseUrl,
-} from "@/hooks/use-server-http-base-url";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -46,9 +41,6 @@ export function SidebarWorkspaceAgentList({
 }: SidebarWorkspaceAgentListProps) {
   const group = useSidebarWorkspaceAgentGroup({ serverId, workspaceId, branch, displayName });
   const focusTab = useWorkspaceLayoutStore((state) => state.focusTab);
-  const baseUrl = useServerHttpBaseUrl(serverId);
-  const authorizationHeader = useServerHttpAuthorizationHeader(serverId);
-  const { petForProvider } = useCodexPets(baseUrl, authorizationHeader);
 
   const handlePress = useCallback(
     (tabId: string) => {
@@ -65,7 +57,7 @@ export function SidebarWorkspaceAgentList({
       workspace: group.input,
       activeTabId: group.activeTabId,
       collapsedWorkspaceIds: NO_COLLAPSED_IDS,
-      showLoneChat: nesting === "project",
+      showAgentRows: nesting === "project",
     }).rows;
   }, [group, nesting]);
   const listStyle = useMemo(
@@ -77,21 +69,9 @@ export function SidebarWorkspaceAgentList({
 
   return (
     <View style={listStyle}>
-      {rows.map((row) => {
-        // An unreachable or older host may serve no pet catalog; the row renders
-        // without one rather than reserving space for a placeholder.
-        const pet = petForProvider(group?.providerByTabId[row.tabId] ?? "");
-        return (
-          <SidebarAgentRowView
-            key={row.tabId}
-            row={row}
-            petSpritesheetUrl={pet?.spritesheetUrl ?? null}
-            petRows={pet?.rows ?? 0}
-            petAuthorizationHeader={authorizationHeader}
-            onPress={handlePress}
-          />
-        );
-      })}
+      {rows.map((row) => (
+        <SidebarAgentRowView key={row.tabId} row={row} onPress={handlePress} />
+      ))}
     </View>
   );
 }

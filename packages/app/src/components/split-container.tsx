@@ -33,6 +33,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
+import { getWorkspacePaneTabStripIds } from "@/components/split-container-pane-tabs";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import {
@@ -157,6 +158,7 @@ function asDragOverData(data: unknown): WorkspaceTabDragData | SplitPaneDropData
 interface SplitNodeViewProps extends Omit<SplitContainerProps, "layout" | "onMoveTabToPane"> {
   node: SplitNode;
   uiTabs: WorkspaceTab[];
+  tabStripPaneIds: ReadonlySet<string>;
   focusedPaneId: string | null;
   activeDragTabId: string | null;
   showDropZones: boolean;
@@ -168,6 +170,7 @@ interface SplitPaneViewProps extends Omit<
   SplitNodeViewProps,
   | "node"
   | "workspaceKey"
+  | "tabStripPaneIds"
   | "focusedPaneId"
   | "activeDragTabId"
   | "showDropZones"
@@ -176,6 +179,7 @@ interface SplitPaneViewProps extends Omit<
 > {
   pane: SplitPane;
   uiTabs: WorkspaceTab[];
+  showTabStrip: boolean;
   isFocused: boolean;
   activeDragTabId: string | null;
   showDropZones: boolean;
@@ -421,6 +425,7 @@ export function SplitContainer({
     return { kind: "pane" as const, pane: focusedPane };
   }, [focusModeEnabled, layout.root, layout.focusedPaneId, panesById]);
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(effectiveRoot), [effectiveRoot]);
+  const tabStripPaneIds = useMemo(() => getWorkspacePaneTabStripIds(layout.root), [layout.root]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = asWorkspaceTabDragData(event.active.data.current);
@@ -579,6 +584,7 @@ export function SplitContainer({
           node={renderRoot}
           workspaceKey={workspaceKey}
           uiTabs={uiTabs}
+          tabStripPaneIds={tabStripPaneIds}
           focusedPaneId={layout.focusedPaneId}
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -722,6 +728,7 @@ function SplitNodeView({
   node,
   workspaceKey,
   uiTabs,
+  tabStripPaneIds,
   focusedPaneId,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -775,6 +782,7 @@ function SplitNodeView({
       <SplitPaneView
         pane={node.pane}
         uiTabs={uiTabs}
+        showTabStrip={tabStripPaneIds.has(node.pane.id)}
         isFocused={node.pane.id === focusedPaneId}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
@@ -821,6 +829,7 @@ function SplitNodeView({
               node={child}
               workspaceKey={workspaceKey}
               uiTabs={uiTabs}
+              tabStripPaneIds={tabStripPaneIds}
               focusedPaneId={focusedPaneId}
               normalizedServerId={normalizedServerId}
               normalizedWorkspaceId={normalizedWorkspaceId}
@@ -873,6 +882,7 @@ function SplitNodeView({
 function SplitPaneView({
   pane,
   uiTabs,
+  showTabStrip,
   isFocused,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -1016,7 +1026,7 @@ function SplitPaneView({
         <View style={paneTabsStyle}>
           <TitlebarDragRegion />
           <WorkspaceDesktopTabsRow
-            hidden
+            hidden={!showTabStrip}
             paneId={pane.id}
             isFocused={isFocused}
             tabs={desktopTabRowItems}

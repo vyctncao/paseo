@@ -329,6 +329,8 @@ describe("real provider usage fetchers", () => {
       "CURSOR_TOKEN",
       "ZAI_API_KEY",
       "GLM_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
       "GEMINI_API_KEY",
       "GOOGLE_API_KEY",
       "GEMINI_CLI_HOME",
@@ -686,10 +688,22 @@ describe("real provider usage fetchers", () => {
     });
   });
 
-  it("fetches Z.ai usage from ZAI_API_KEY", async () => {
+  it("fetches GLM plan counters from ZAI_API_KEY", async () => {
     process.env["ZAI_API_KEY"] = "zai_test_token";
     fetchApi = mockFetch(
       new Map([
+        [
+          "https://api.z.ai/api/monitor/usage/quota/limit",
+          () =>
+            jsonResponse({
+              data: {
+                limits: [
+                  { type: "TOKENS_LIMIT", percentage: 42 },
+                  { type: "TIME_LIMIT", percentage: 25, currentValue: 50, usage: 200 },
+                ],
+              },
+            }),
+        ],
         [
           "https://api.z.ai/api/biz/subscription/list",
           () =>
@@ -711,9 +725,52 @@ describe("real provider usage fetchers", () => {
 
     expect(zai).toMatchObject({
       status: "available",
+      displayName: "GLM",
       planLabel: "GLM Coding Max",
+      windows: [
+        expect.objectContaining({
+          id: "tokens_limit",
+          label: "5h token usage",
+          usedPct: 42,
+          remainingPct: 58,
+        }),
+      ],
+      balances: [
+        expect.objectContaining({
+          id: "time_limit",
+          label: "Monthly MCP calls",
+          used: 50,
+          remaining: 150,
+          limit: 200,
+          unit: "requests",
+        }),
+      ],
       details: expect.arrayContaining([{ id: "status", label: "Status", value: "VALID" }]),
     });
+  });
+
+  it("reads GLM Claude Code authentication and uses the configured ZHIPU origin", async () => {
+    process.env["ANTHROPIC_AUTH_TOKEN"] = "glm_claude_token";
+    process.env["ANTHROPIC_BASE_URL"] = "https://open.bigmodel.cn/api/anthropic";
+    const requestedHeaders: Record<string, string | undefined> = {};
+    fetchApi = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      requestedHeaders[url.toString()] = (
+        init?.headers as Record<string, string> | undefined
+      )?.Authorization;
+      if (url.toString().endsWith("/api/monitor/usage/quota/limit")) {
+        return jsonResponse({ data: { limits: [{ type: "TOKENS_LIMIT", percentage: 9 }] } });
+      }
+      return jsonResponse({ data: [] });
+    }) as unknown as typeof fetch;
+
+    const zai = findProvider(await service().listUsage(), "zai");
+
+    expect(zai.windows).toEqual([
+      expect.objectContaining({ id: "tokens_limit", usedPct: 9, remainingPct: 91 }),
+    ]);
+    expect(requestedHeaders["https://open.bigmodel.cn/api/monitor/usage/quota/limit"]).toBe(
+      "glm_claude_token",
+    );
   });
 
   it("fetches Grok usage and preserves zero values", async () => {
@@ -721,7 +778,7 @@ describe("real provider usage fetchers", () => {
     fetchApi = mockFetch(
       new Map([
         [
-          "https://cli-chat-proxy.grok.com/v1/billing",
+          "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
           () =>
             jsonResponse({
               config: { monthlyLimit: { val: 0 } },
@@ -746,7 +803,7 @@ describe("real provider usage fetchers", () => {
     });
   });
 
-  it("reads current Grok CLI credentials and billing fields", async () => {
+  it("reads the current Grok CLI weekly credit period", async () => {
     const grokDir = join(homeDir, ".grok");
     mkdirSync(grokDir, { recursive: true });
     writeFileSync(
@@ -761,13 +818,19 @@ describe("real provider usage fetchers", () => {
     fetchApi = mockFetch(
       new Map([
         [
-          "https://cli-chat-proxy.grok.com/v1/billing",
+          "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
           () =>
             jsonResponse({
               config: {
+                currentPeriod: {
+                  type: "USAGE_PERIOD_TYPE_WEEKLY",
+                  start: "2026-07-18T02:36:25.134131+00:00",
+                  end: "2026-07-25T02:36:25.134131+00:00",
+                },
+                creditUsagePercent: 100,
                 monthlyLimit: { val: 20_000 },
-                used: { val: 6_473 },
-                billingPeriodEnd: "2026-08-01T00:00:00Z",
+                used: { val: 16_636 },
+                billingPeriodEnd: "2026-07-25T02:36:25.134131+00:00",
               },
             }),
         ],
@@ -778,18 +841,19 @@ describe("real provider usage fetchers", () => {
 
     expect(grok).toMatchObject({
       status: "available",
-      balances: [
+      windows: [
         expect.objectContaining({
-          id: "monthly_credits",
-          used: 6_473,
-          remaining: 13_527,
-          limit: 20_000,
-          resetsAt: "2026-08-01T00:00:00Z",
+          id: "current_period_credits",
+          label: "Weekly credits",
+          usedPct: 100,
+          remainingPct: 0,
+          resetsAt: "2026-07-25T02:36:25.134131+00:00",
         }),
       ],
+      balances: [],
     });
     expect(fetchApi).toHaveBeenCalledWith(
-      "https://cli-chat-proxy.grok.com/v1/billing",
+      "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer grok_current_token",
@@ -824,6 +888,7 @@ describe("real provider usage fetchers", () => {
       windows: [
         expect.objectContaining({
           id: "coding_usage",
+          displayMode: "remaining",
           usedPct: 26,
           remainingPct: 74,
           resetsAt: "2026-02-11T17:32:50Z",
@@ -857,6 +922,7 @@ describe("real provider usage fetchers", () => {
       windows: [
         expect.objectContaining({
           id: "coding_usage",
+          displayMode: "remaining",
           usedPct: 25,
           remainingPct: 75,
           resetsAt: "2026-06-23T05:12:17Z",
@@ -900,7 +966,13 @@ describe("real provider usage fetchers", () => {
     expect(usageCalls).toBe(2);
     expect(kimi).toMatchObject({
       status: "available",
-      windows: [expect.objectContaining({ usedPct: 32, remainingPct: 68 })],
+      windows: [
+        expect.objectContaining({
+          displayMode: "remaining",
+          usedPct: 32,
+          remainingPct: 68,
+        }),
+      ],
     });
     expect(saved).toMatchObject({
       access_token: "kimi_refreshed_token",
@@ -934,6 +1006,7 @@ describe("real provider usage fetchers", () => {
       expect.objectContaining({
         id: "coding_limit_0",
         label: "5h limit",
+        displayMode: "remaining",
         usedPct: 12,
         remainingPct: 88,
         resetsAt: "2026-07-10T20:00:00Z",
@@ -941,7 +1014,7 @@ describe("real provider usage fetchers", () => {
     ]);
   });
 
-  it("keeps a configured Gemini API-key account visible with its usage source", async () => {
+  it("keeps a configured Gemini API-key account visible and explains the missing meter", async () => {
     const geminiHome = join(homeDir, ".gemini");
     mkdirSync(geminiHome, { recursive: true });
     writeFileSync(
@@ -958,7 +1031,13 @@ describe("real provider usage fetchers", () => {
       providerId: "gemini",
       status: "available",
       planLabel: "API key",
-      details: [{ id: "usage_source", label: "Usage", value: "Google AI Studio" }],
+      details: [
+        {
+          id: "usage_source",
+          label: "Live usage",
+          value: "Not exposed for API keys",
+        },
+      ],
     });
   });
 
@@ -1001,19 +1080,24 @@ describe("real provider usage fetchers", () => {
     expect(authorization).toBe("Bearer minimax_test_token");
     expect(miniMax).toMatchObject({
       status: "available",
-      windows: expect.arrayContaining([
+      windows: [],
+      balances: expect.arrayContaining([
         expect.objectContaining({
           id: "interval_MiniMax-M2.7",
           label: "MiniMax-M2.7 · Interval",
-          usedPct: 25,
-          remainingPct: 75,
+          used: 250,
+          remaining: 750,
+          limit: 1000,
+          unit: "requests",
           resetsAt: "2026-06-19T05:00:00.000Z",
         }),
         expect.objectContaining({
           id: "weekly_MiniMax-M2.7",
           label: "MiniMax-M2.7 · Weekly",
-          usedPct: 24,
-          remainingPct: 76,
+          used: 1200,
+          remaining: 3800,
+          limit: 5000,
+          unit: "requests",
           resetsAt: "2026-06-26T00:00:00.000Z",
         }),
       ]),
@@ -1096,10 +1180,11 @@ describe("real provider usage fetchers", () => {
 
     expect(miniMax).toMatchObject({
       status: "available",
-      windows: expect.arrayContaining([
+      balances: expect.arrayContaining([
         expect.objectContaining({
           id: "interval_MiniMax-M2.7",
-          usedPct: 100,
+          used: 100,
+          remaining: 0,
           tone: "danger",
         }),
         expect.objectContaining({

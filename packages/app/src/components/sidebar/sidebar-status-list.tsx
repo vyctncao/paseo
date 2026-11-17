@@ -1,6 +1,14 @@
-import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { View, Text, Pressable, ScrollView, type PressableStateCallbackType } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  type GestureResponderEvent,
+  type PointerEvent as RNPointerEvent,
+  type PressableStateCallbackType,
+} from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -60,6 +68,7 @@ import {
   SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import { useSidebarWorkspaceMultiSelect } from "@/components/sidebar/sidebar-workspace-multi-select";
 
 // Themed icon wrappers
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -337,15 +346,27 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
 }) {
   const workspaceEntry = useSidebarWorkspaceEntry(workspace.serverId, workspace.workspaceId);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const selected =
+  const { selectedWorkspaceKeys, toggleFromPress } = useSidebarWorkspaceMultiSelect();
+  const activeSelected =
     activeWorkspaceSelection?.serverId === workspace.serverId &&
     activeWorkspaceSelection?.workspaceId === workspace.workspaceId;
+  const selected = activeSelected || selectedWorkspaceKeys.has(workspace.workspaceKey);
 
-  const handlePress = useCallback(() => {
-    if (!workspace.serverId) return;
-    onWorkspacePress?.();
-    navigateToWorkspace(workspace.serverId, workspace.workspaceId);
-  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (toggleFromPress(event, workspace.workspaceKey)) return;
+      if (!workspace.serverId) return;
+      onWorkspacePress?.();
+      navigateToWorkspace(workspace.serverId, workspace.workspaceId);
+    },
+    [
+      onWorkspacePress,
+      toggleFromPress,
+      workspace.serverId,
+      workspace.workspaceId,
+      workspace.workspaceKey,
+    ],
+  );
 
   if (!workspaceEntry) return null;
 
@@ -354,6 +375,7 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
       workspace={workspaceEntry}
       subtitle={subtitle}
       selected={selected}
+      activeSelected={activeSelected}
       shortcutNumber={shortcutNumber}
       showShortcutBadge={showShortcutBadge}
       onPress={handlePress}
@@ -365,6 +387,7 @@ function StatusWorkspaceRowWithMenu({
   workspace,
   subtitle,
   selected,
+  activeSelected,
   shortcutNumber,
   showShortcutBadge,
   onPress,
@@ -372,14 +395,16 @@ function StatusWorkspaceRowWithMenu({
   workspace: SidebarWorkspaceEntry;
   subtitle: string;
   selected: boolean;
+  activeSelected: boolean;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const { registerArchiveHandler } = useSidebarWorkspaceMultiSelect();
   const workspaceDirectory = resolveWorkspaceDirectory({
     workspaceDirectory: workspace.workspaceDirectory,
   });
@@ -399,11 +424,11 @@ function StatusWorkspaceRowWithMenu({
     redirectIfArchivingActiveWorkspace({
       serverId: workspace.serverId,
       workspaceId: workspace.workspaceId,
-      activeWorkspaceSelection: selected
+      activeWorkspaceSelection: activeSelected
         ? { serverId: workspace.serverId, workspaceId: workspace.workspaceId }
         : null,
     });
-  }, [selected, workspace]);
+  }, [activeSelected, workspace]);
 
   const archiveController = useWorkspaceArchive({
     serverId: workspace.serverId,
@@ -420,6 +445,15 @@ function StatusWorkspaceRowWithMenu({
     if (isArchiving) return;
     archiveController.archive();
   }, [archiveController, isArchiving]);
+  const handleBulkArchive = useCallback(
+    () => (isArchiving ? Promise.resolve(false) : archiveController.archiveAsync()),
+    [archiveController, isArchiving],
+  );
+
+  useEffect(
+    () => registerArchiveHandler(workspace.workspaceKey, handleBulkArchive),
+    [handleBulkArchive, registerArchiveHandler, workspace.workspaceKey],
+  );
 
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
@@ -472,7 +506,7 @@ function StatusWorkspaceRowWithMenu({
   useKeyboardActionHandler({
     handlerId: `worktree-archive-${workspace.workspaceKey}`,
     actions: ["worktree.archive"],
-    enabled: selected && !isArchiving,
+    enabled: activeSelected && !isArchiving,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -544,7 +578,7 @@ function StatusWorkspaceRowInner({
   selected: boolean;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   isArchiving: boolean;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
@@ -557,6 +591,7 @@ function StatusWorkspaceRowInner({
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
   const isTouchPlatform = platformIsNative;
+  const { beginRangeDrag, extendRangeDrag } = useSidebarWorkspaceMultiSelect();
 
   const isDesktop = !isTouchPlatform;
   const showScriptsIcon = isDesktop && workspace.hasRunningScripts;
@@ -569,9 +604,21 @@ function StatusWorkspaceRowInner({
   }
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const handleSelectionPressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      beginRangeDrag(event, workspace.workspaceKey);
+    },
+    [beginRangeDrag, workspace.workspaceKey],
+  );
+  const handleSelectionPointerEnter = useCallback(
+    (event: RNPointerEvent) => {
+      extendRangeDrag(event, workspace.workspaceKey);
+    },
+    [extendRangeDrag, workspace.workspaceKey],
+  );
 
   return (
-    <SidebarWorkspaceRowFrame workspace={workspace}>
+    <SidebarWorkspaceRowFrame workspace={workspace} onPointerEnter={handleSelectionPointerEnter}>
       {({ isHovered, hoverHandlers }) => {
         const showShortcut = showShortcutBadge && shortcutNumber !== null;
         const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
@@ -585,6 +632,7 @@ function StatusWorkspaceRowInner({
               accessibilityRole="button"
               accessibilityState={accessibilityState}
               style={workspaceRowStyle}
+              onPressIn={handleSelectionPressIn}
               onPress={onPress}
               testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
             >

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { GitHubSearchItem } from "@getpaseo/protocol/messages";
-import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
+import {
+  findCheckoutHintPrAttachment,
+  resolveNewWorkspacePickerItem,
+  resolveWorkspaceBaseRef,
+  syncPickerPrAttachment,
+} from "./new-workspace-picker-state";
 
 function makePrItem(number: number, title: string, headRefName = "feature/x"): GitHubSearchItem {
   return {
@@ -94,6 +99,39 @@ describe("syncPickerPrAttachment", () => {
     });
     expect(result.attachedPrNumber).toBeNull();
     expect(result.attachments).toHaveLength(1);
+  });
+});
+
+describe("remembered workspace defaults", () => {
+  it("uses the remembered branch until the user makes a manual selection", () => {
+    expect(
+      resolveNewWorkspacePickerItem({
+        manualItem: null,
+        rememberedBaseRef: "fix/previous-workspace",
+      }),
+    ).toEqual({ kind: "branch", name: "fix/previous-workspace" });
+    expect(
+      resolveNewWorkspacePickerItem({
+        manualItem: { kind: "branch", name: "feature/manual" },
+        rememberedBaseRef: "fix/previous-workspace",
+      }),
+    ).toEqual({ kind: "branch", name: "feature/manual" });
+  });
+
+  it("remembers branch and PR head refs, then falls back to the checkout branch", () => {
+    expect(
+      resolveWorkspaceBaseRef({
+        selectedItem: { kind: "branch", name: "feature/branch" },
+        currentBranch: "main",
+      }),
+    ).toBe("feature/branch");
+    expect(
+      resolveWorkspaceBaseRef({
+        selectedItem: { kind: "github-pr", item: makePrItem(12, "PR", "feature/pr") },
+        currentBranch: "main",
+      }),
+    ).toBe("feature/pr");
+    expect(resolveWorkspaceBaseRef({ selectedItem: null, currentBranch: "main" })).toBe("main");
   });
 });
 

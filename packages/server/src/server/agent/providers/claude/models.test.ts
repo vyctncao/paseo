@@ -10,12 +10,18 @@ import {
   claudeManifestModelSupportsFastMode,
   normalizeClaudeManifestModelId,
 } from "./model-manifest.js";
-import { findClaudeModel, getClaudeModels, normalizeClaudeRuntimeModelId } from "./models.js";
+import {
+  findClaudeModel,
+  getClaudeModels,
+  mergeClaudeSdkModels,
+  normalizeClaudeRuntimeModelId,
+} from "./models.js";
 
 const createdClaudeConfigDirs: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   await Promise.all(
     createdClaudeConfigDirs.map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
@@ -34,6 +40,13 @@ async function createClaudeConfigDirWithRawSettings(settings: string): Promise<s
   createdClaudeConfigDirs.push(configDir);
   await fs.writeFile(path.join(configDir, "settings.json"), settings);
   return configDir;
+}
+
+function createClaudeCatalogClient(): ClaudeAgentClient {
+  return new ClaudeAgentClient({
+    logger: createTestLogger(),
+    discoverSdkModels: async () => [],
+  });
 }
 
 describe("getClaudeModels", () => {
@@ -126,6 +139,57 @@ describe("getClaudeModels", () => {
   });
 });
 
+describe("mergeClaudeSdkModels", () => {
+  it("puts newly discovered Claude Code models first and promotes the live default", () => {
+    const models = mergeClaudeSdkModels(getClaudeModels(), [
+      {
+        value: "default",
+        resolvedModel: "claude-opus-5[1m]",
+        displayName: "Default (recommended)",
+        description: "Opus 5 with 1M context · Best for everyday, complex tasks",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      {
+        value: "opus[1m]",
+        resolvedModel: "claude-opus-5[1m]",
+        displayName: "Opus (1M context)",
+        description: "Opus 5 with 1M context · Best for everyday, complex tasks",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      {
+        value: "sonnet",
+        resolvedModel: "claude-sonnet-5",
+        displayName: "Sonnet",
+        description: "Sonnet 5 · Efficient for routine tasks",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+    ]);
+
+    expect(models.slice(0, 2).map((model) => model.id)).toEqual([
+      "claude-opus-5[1m]",
+      "claude-sonnet-5",
+    ]);
+    expect(models.filter((model) => model.isDefault).map((model) => model.id)).toEqual([
+      "claude-opus-5[1m]",
+    ]);
+    expect(models[0]).toMatchObject({
+      label: "Opus 5 1M",
+      contextWindowMaxTokens: 1_000_000,
+    });
+    expect(models[0].thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+    ]);
+  });
+});
+
 describe("ClaudeAgentClient.fetchCatalog", () => {
   it("appends concrete models from Claude settings.json", async () => {
     const configDir = await createClaudeConfigDir({
@@ -139,7 +203,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createClaudeCatalogClient();
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -192,7 +256,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-"));
     createdClaudeConfigDirs.push(configDir);
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createClaudeCatalogClient();
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -206,7 +270,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
   it("falls back to hardcoded models when settings.json is malformed", async () => {
     const configDir = await createClaudeConfigDirWithRawSettings("{ nope");
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createClaudeCatalogClient();
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -226,7 +290,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createClaudeCatalogClient();
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -246,7 +310,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createClaudeCatalogClient();
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -258,6 +322,97 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       ...getClaudeModels().map((model) => model.id),
       "glm-5.1",
     ]);
+  });
+
+  it("discovers every model exposed by a configured Claude gateway", async () => {
+    const configDir = await createClaudeConfigDir({
+      env: {
+        ANTHROPIC_BASE_URL: "https://app.manifest.build/",
+        ANTHROPIC_AUTH_TOKEN: "manifest-token",
+        ANTHROPIC_API_KEY: "manifest-api-key",
+        ANTHROPIC_CUSTOM_HEADERS: "X-Manifest-Workspace: workspace-1",
+      },
+    });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            object: "list",
+            data: [
+              { id: "auto", object: "model", owned_by: "manifest" },
+              { id: "anthropic/claude-sonnet-5", object: "model", owned_by: "anthropic" },
+              { id: "openai/gpt-5.4", object: "model", owned_by: "openai" },
+              { id: "claude-opus-4-8", object: "model", owned_by: "anthropic" },
+              { id: "auto", object: "model", owned_by: "manifest" },
+              { nope: true },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createClaudeCatalogClient();
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: true,
+    });
+
+    expect(models).toEqual([
+      ...getClaudeModels(),
+      {
+        provider: "claude",
+        id: "auto",
+        label: "auto",
+        description: "From app.manifest.build (manifest)",
+      },
+      {
+        provider: "claude",
+        id: "anthropic/claude-sonnet-5",
+        label: "anthropic/claude-sonnet-5",
+        description: "From app.manifest.build (anthropic)",
+      },
+      {
+        provider: "claude",
+        id: "openai/gpt-5.4",
+        label: "openai/gpt-5.4",
+        description: "From app.manifest.build (openai)",
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url.toString()).toBe("https://app.manifest.build/v1/models");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer manifest-token");
+    expect(headers.get("X-Api-Key")).toBe("manifest-api-key");
+    expect(headers.get("X-Manifest-Workspace")).toBe("workspace-1");
+  });
+
+  it("keeps the existing catalog when gateway discovery fails", async () => {
+    const configDir = await createClaudeConfigDir({
+      env: {
+        ANTHROPIC_BASE_URL: "https://gateway.example.com/v1",
+        ANTHROPIC_AUTH_TOKEN: "gateway-token",
+      },
+    });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(null, { status: 503 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createClaudeCatalogClient();
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: true,
+    });
+
+    expect(models).toEqual(getClaudeModels());
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0].toString()).toBe("https://gateway.example.com/v1/models");
   });
 });
 

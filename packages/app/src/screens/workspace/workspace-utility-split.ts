@@ -4,6 +4,7 @@ interface OpenWorkspaceUtilitySplitInput {
   workspaceKey: string | null;
   targetPaneId: string | null;
   position: WorkspaceUtilitySplitPosition;
+  fallbackToFocusedPane?: boolean;
   splitPaneEmpty: (
     workspaceKey: string,
     input: {
@@ -23,17 +24,22 @@ export function openWorkspaceUtilitySplit({
   workspaceKey,
   targetPaneId,
   position,
+  fallbackToFocusedPane = true,
   splitPaneEmpty,
   openInPane,
 }: OpenWorkspaceUtilitySplitInput): string | null {
   if (!workspaceKey || !targetPaneId) {
-    openInPane();
+    if (fallbackToFocusedPane) {
+      openInPane();
+    }
     return null;
   }
 
   const paneId = splitPaneEmpty(workspaceKey, { targetPaneId, position });
   if (!paneId) {
-    openInPane();
+    if (fallbackToFocusedPane) {
+      openInPane();
+    }
     return null;
   }
 

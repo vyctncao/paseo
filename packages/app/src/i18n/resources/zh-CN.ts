@@ -1081,6 +1081,7 @@ export const zhCN: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "选择文件夹…",
     placeholder: "输入目录路径...",
     opening: "正在打开 project...",
     searching: "正在搜索...",

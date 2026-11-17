@@ -1118,6 +1118,7 @@ export const ptBR: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "Escolher pasta…",
     placeholder: "Digite um caminho de diretório...",
     opening: "Abrindo projeto...",
     searching: "Buscando...",

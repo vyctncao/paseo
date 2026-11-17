@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CreateAgentPreferencesService } from "./service";
 import {
+  getWorkspaceBaseRefPreference,
   mergeCreateAgentSelectionPreferences,
   mergeProviderPreferences,
+  mergeWorkspaceBaseRefPreference,
   parseFormPreferences,
 } from "./preferences";
 import { FakeCreateAgentPreferenceStorage } from "./test-utils/fake-preference-storage";
@@ -139,5 +141,40 @@ describe("create agent preferences", () => {
 
   it("rejects an unknown isolation value as invalid stored preferences", () => {
     expect(parseFormPreferences({ provider: "codex", isolation: "sandbox" })).toEqual({});
+  });
+
+  it("remembers a workspace base branch per host and project without losing agent defaults", () => {
+    const initial = {
+      provider: "codex",
+      providerPreferences: {
+        codex: {
+          model: "gpt-5.6",
+          mode: "full-access",
+          thinkingByModel: { "gpt-5.6": "high" },
+        },
+      },
+    };
+    const preferences = mergeWorkspaceBaseRefPreference({
+      preferences: initial,
+      serverId: "server-a",
+      projectKey: "github.com/acme/paseo",
+      baseRef: "fix/remember-workspace-defaults",
+    });
+
+    expect(
+      getWorkspaceBaseRefPreference({
+        preferences,
+        serverId: "server-a",
+        projectKey: "github.com/acme/paseo",
+      }),
+    ).toBe("fix/remember-workspace-defaults");
+    expect(
+      getWorkspaceBaseRefPreference({
+        preferences,
+        serverId: "server-b",
+        projectKey: "github.com/acme/paseo",
+      }),
+    ).toBeNull();
+    expect(preferences.providerPreferences).toEqual(initial.providerPreferences);
   });
 });

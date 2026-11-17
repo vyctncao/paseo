@@ -49,6 +49,7 @@ export function unavailableUsage(provider: {
 export function windowFromUsedPct(input: {
   id: string;
   label: string;
+  displayMode?: ProviderUsageWindow["displayMode"];
   utilizationPct: number | null | undefined;
   resetsAt?: string | null;
   tone?: ProviderUsageWindow["tone"];
@@ -61,6 +62,9 @@ export function windowFromUsedPct(input: {
     remainingPct: usedPct === null ? null : Math.max(0, 100 - usedPct),
     resetsAt: input.resetsAt ?? null,
   };
+  if (input.displayMode) {
+    window.displayMode = input.displayMode;
+  }
   if (input.tone) {
     window.tone = input.tone;
   }

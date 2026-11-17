@@ -7,6 +7,7 @@ import {
   StatusBar,
   ScrollView,
   type GestureResponderEvent,
+  type PointerEvent as RNPointerEvent,
   type PressableStateCallbackType,
   type ViewStyle,
 } from "react-native";
@@ -37,6 +38,10 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
 import { SidebarWorkspaceAgentList } from "@/components/sidebar/sidebar-workspace-agent-list";
+import {
+  SidebarWorkspaceMultiSelectProvider,
+  useSidebarWorkspaceMultiSelect,
+} from "@/components/sidebar/sidebar-workspace-multi-select";
 import { SidebarArchivedAgents } from "@/components/sidebar/sidebar-archived-agents";
 import {
   Archive,
@@ -135,6 +140,7 @@ import { getDesktopHost } from "@/desktop/host";
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey;
+const STANDALONE_TASKS_COLLAPSE_KEY = "__standalone_tasks__";
 
 const WORKSPACE_STATUS_DOT_WIDTH = 14;
 const DEFAULT_STATUS_DOT_SIZE = 7;
@@ -155,6 +161,8 @@ const ThemedSettings = withUnistyles(Settings);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronRight = withUnistyles(ChevronRight);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -276,7 +284,7 @@ interface WorkspaceRowInnerProps {
   selected: boolean;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   drag: () => void;
   isDragging: boolean;
   isArchiving: boolean;
@@ -1398,8 +1406,8 @@ function WorkspaceRowInner({
   onRename,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
-  const _isCompact = useIsCompactFormFactor();
   const isTouchPlatform = platformIsNative;
+  const { beginRangeDrag, extendRangeDrag } = useSidebarWorkspaceMultiSelect();
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -1411,18 +1419,38 @@ function WorkspaceRowInner({
     ...dragAttributes
   } = dragHandleProps?.attributes ?? {};
 
-  const handlePress = useCallback(() => {
-    if (interaction.didLongPressRef.current) {
-      interaction.didLongPressRef.current = false;
-      return;
-    }
-    onPress();
-  }, [interaction.didLongPressRef, onPress]);
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (interaction.didLongPressRef.current) {
+        interaction.didLongPressRef.current = false;
+        return;
+      }
+      onPress(event);
+    },
+    [interaction.didLongPressRef, onPress],
+  );
+  const handlePressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      beginRangeDrag(event, workspace.workspaceKey);
+      interaction.handlePressIn(event);
+    },
+    [beginRangeDrag, interaction, workspace.workspaceKey],
+  );
+  const handleSelectionPointerEnter = useCallback(
+    (event: RNPointerEvent) => {
+      extendRangeDrag(event, workspace.workspaceKey);
+    },
+    [extendRangeDrag, workspace.workspaceKey],
+  );
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
 
   return (
-    <SidebarWorkspaceRowFrame workspace={workspace} isDragging={isDragging}>
+    <SidebarWorkspaceRowFrame
+      workspace={workspace}
+      isDragging={isDragging}
+      onPointerEnter={handleSelectionPointerEnter}
+    >
       {({ isHovered, hoverHandlers }) => {
         const isDesktop = !isTouchPlatform;
         const showScriptsIcon = isDesktop && workspace.hasRunningScripts;
@@ -1452,7 +1480,7 @@ function WorkspaceRowInner({
               accessibilityRole="button"
               accessibilityState={accessibilityState}
               style={workspaceRowStyle}
-              onPressIn={interaction.handlePressIn}
+              onPressIn={handlePressIn}
               onTouchMove={interaction.handleTouchMove}
               onPressOut={interaction.handlePressOut}
               onPress={handlePress}
@@ -1497,6 +1525,7 @@ function WorkspaceRowWithMenu({
   workspace,
   subtitle,
   selected,
+  activeSelected,
   shortcutNumber,
   showShortcutBadge,
   onPress,
@@ -1509,9 +1538,10 @@ function WorkspaceRowWithMenu({
   workspace: SidebarWorkspaceEntry;
   subtitle?: string | null;
   selected: boolean;
+  activeSelected: boolean;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   drag: () => void;
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
@@ -1522,6 +1552,7 @@ function WorkspaceRowWithMenu({
   const toast = useToast();
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const { registerArchiveHandler } = useSidebarWorkspaceMultiSelect();
   const workspaceDirectory = resolveWorkspaceDirectory({
     workspaceDirectory: workspace.workspaceDirectory,
   });
@@ -1540,9 +1571,9 @@ function WorkspaceRowWithMenu({
     redirectIfArchivingActiveWorkspace({
       serverId: workspace.serverId,
       workspaceId: workspace.workspaceId,
-      activeWorkspaceSelection: selectionForSelectedWorkspace(selected, workspace),
+      activeWorkspaceSelection: selectionForSelectedWorkspace(activeSelected, workspace),
     });
-  }, [selected, workspace]);
+  }, [activeSelected, workspace]);
 
   const archiveController = useWorkspaceArchive({
     serverId: workspace.serverId,
@@ -1561,6 +1592,15 @@ function WorkspaceRowWithMenu({
     }
     archiveController.archive();
   }, [archiveController, isArchiving]);
+  const handleBulkArchive = useCallback(
+    () => (isArchiving ? Promise.resolve(false) : archiveController.archiveAsync()),
+    [archiveController, isArchiving],
+  );
+
+  useEffect(
+    () => registerArchiveHandler(workspace.workspaceKey, handleBulkArchive),
+    [handleBulkArchive, registerArchiveHandler, workspace.workspaceKey],
+  );
 
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
@@ -1628,7 +1668,7 @@ function WorkspaceRowWithMenu({
   useKeyboardActionHandler({
     handlerId: `worktree-archive-${workspace.workspaceKey}`,
     actions: ["worktree.archive"],
-    enabled: selected && !isArchiving,
+    enabled: activeSelected && !isArchiving,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -1714,13 +1754,29 @@ function WorkspaceRowItem({
   isDragging = false,
   dragHandleProps,
 }: WorkspaceRowItemProps) {
-  const handlePress = useCallback(() => {
-    if (!workspace.serverId) {
-      return;
-    }
-    onWorkspacePress?.();
-    navigateToWorkspace(workspace.serverId, workspace.workspaceId);
-  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
+  const { selectedWorkspaceKeys, toggleFromPress } = useSidebarWorkspaceMultiSelect();
+  const activeSelected = isWorkspaceSelected({
+    selection: activeWorkspaceSelection,
+    serverId: workspace.serverId,
+    workspaceId: workspace.workspaceId,
+    enabled: selectionEnabled,
+  });
+  const multiSelected = selectedWorkspaceKeys.has(workspace.workspaceKey);
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (toggleFromPress(event, workspace.workspaceKey)) return;
+      if (!workspace.serverId) return;
+      onWorkspacePress?.();
+      navigateToWorkspace(workspace.serverId, workspace.workspaceId);
+    },
+    [
+      onWorkspacePress,
+      toggleFromPress,
+      workspace.serverId,
+      workspace.workspaceId,
+      workspace.workspaceKey,
+    ],
+  );
 
   return (
     <WorkspaceRow
@@ -1730,12 +1786,8 @@ function WorkspaceRowItem({
       showShortcutBadge={showShortcutBadge}
       canCopyBranchName={canCopyBranchName}
       isCreating={isCreating}
-      selected={isWorkspaceSelected({
-        selection: activeWorkspaceSelection,
-        serverId: workspace.serverId,
-        workspaceId: workspace.workspaceId,
-        enabled: selectionEnabled,
-      })}
+      selected={activeSelected || multiSelected}
+      activeSelected={activeSelected}
       onPress={handlePress}
       drag={drag ?? noop}
       isDragging={isDragging}
@@ -1789,18 +1841,20 @@ function WorkspaceRow({
   canCopyBranchName,
   isCreating = false,
   selected,
+  activeSelected,
 }: {
   workspace: SidebarWorkspacePlacement;
   subtitle?: string | null;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   drag: () => void;
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
   canCopyBranchName: boolean;
   isCreating?: boolean;
   selected: boolean;
+  activeSelected: boolean;
 }) {
   const hydratedWorkspace = useSidebarWorkspaceEntry(workspace.serverId, workspace.workspaceId);
 
@@ -1813,6 +1867,7 @@ function WorkspaceRow({
       workspace={hydratedWorkspace}
       subtitle={subtitle}
       selected={selected}
+      activeSelected={activeSelected}
       shortcutNumber={shortcutNumber}
       showShortcutBadge={showShortcutBadge}
       onPress={onPress}
@@ -2164,6 +2219,27 @@ export function SidebarWorkspaceList({
   const serverIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const supportsMultiplicityByServerId = useHostFeatureMap(serverIds, "workspaceMultiplicity");
   const showHostLabels = useMemo(() => shouldShowSidebarHostLabels(projects), [projects]);
+  const orderedWorkspaceKeys = useMemo(() => {
+    if (groupMode === "status") {
+      return statusWorkspacePlacements.map((workspace) => workspace.workspaceKey);
+    }
+    const { projects: visibleProjects, taskWorkspaces } =
+      splitStandaloneTasksFromProjects(projects);
+    const keys: string[] = [];
+    for (const project of visibleProjects) {
+      if (
+        collapsedProjectKeys.has(project.projectKey) ||
+        buildSidebarProjectChildrenModel(project).kind === "direct_chats"
+      ) {
+        continue;
+      }
+      keys.push(...project.workspaces.map((workspace) => workspace.workspaceKey));
+    }
+    if (!collapsedProjectKeys.has(STANDALONE_TASKS_COLLAPSE_KEY)) {
+      keys.push(...taskWorkspaces.map((workspace) => workspace.workspaceKey));
+    }
+    return keys;
+  }, [collapsedProjectKeys, groupMode, projects, statusWorkspacePlacements]);
 
   if (statusFilter === "archived") {
     return (
@@ -2211,7 +2287,62 @@ export function SidebarWorkspaceList({
       />
     );
 
-  return content;
+  return (
+    <SidebarWorkspaceMultiSelectProvider orderedWorkspaceKeys={orderedWorkspaceKeys}>
+      <SidebarWorkspaceBulkActions />
+      {content}
+    </SidebarWorkspaceMultiSelectProvider>
+  );
+}
+
+function SidebarWorkspaceBulkActions() {
+  const { selectedWorkspaceKeys, clearSelection, archiveSelected, isArchiving } =
+    useSidebarWorkspaceMultiSelect();
+  const handleArchiveSelected = useCallback(async () => {
+    const count = selectedWorkspaceKeys.size;
+    const confirmed = await confirmDialog({
+      title: `Archive ${count} workspaces?`,
+      message:
+        "Selected workspaces will be removed from the sidebar. Worktrees with uncommitted or unpushed changes will ask for confirmation individually.",
+      confirmLabel: "Archive",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (confirmed) await archiveSelected();
+  }, [archiveSelected, selectedWorkspaceKeys.size]);
+  const handleArchivePress = useCallback(() => {
+    void handleArchiveSelected();
+  }, [handleArchiveSelected]);
+  if (selectedWorkspaceKeys.size === 0) return null;
+
+  return (
+    <View style={styles.bulkActions} testID="sidebar-workspace-bulk-actions">
+      <Text style={styles.bulkActionsLabel}>{selectedWorkspaceKeys.size} selected</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Archive ${selectedWorkspaceKeys.size} selected workspaces`}
+        disabled={isArchiving}
+        onPress={handleArchivePress}
+        style={styles.bulkArchiveButton}
+        testID="sidebar-workspace-bulk-archive"
+      >
+        {isArchiving ? (
+          <ThemedActivityIndicator size={13} uniProps={foregroundMutedColorMapping} />
+        ) : (
+          <ThemedArchive size={13} uniProps={foregroundColorMapping} />
+        )}
+        <Text style={styles.bulkArchiveButtonText}>{isArchiving ? "Archiving…" : "Archive"}</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Clear workspace selection"
+        onPress={clearSelection}
+        style={styles.bulkClearButton}
+      >
+        <Text style={styles.bulkClearButtonText}>Clear</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 function SidebarStatusModeWrapper({
@@ -2279,6 +2410,11 @@ function ProjectModeList({
     () => splitStandaloneTasksFromProjects(projects),
     [projects],
   );
+  const tasksCollapsed = collapsedProjectKeys.has(STANDALONE_TASKS_COLLAPSE_KEY);
+  const tasksAccessibilityState = useMemo(() => ({ expanded: !tasksCollapsed }), [tasksCollapsed]);
+  const handleToggleTasksCollapsed = useCallback(() => {
+    onToggleProjectCollapsed(STANDALONE_TASKS_COLLAPSE_KEY);
+  }, [onToggleProjectCollapsed]);
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder);
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
@@ -2498,24 +2634,40 @@ function ProjectModeList({
       )}
       {taskWorkspaces.length > 0 ? (
         <View style={styles.tasksSection} testID="sidebar-tasks-section">
-          <Text style={styles.tasksSectionTitle}>Tasks</Text>
-          {taskWorkspaces.map((workspace) => (
-            <MemoWorkspaceRowItem
-              key={workspace.workspaceKey}
-              workspace={workspace}
-              subtitle={
-                showHostLabels
-                  ? (hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId)
-                  : null
-              }
-              shortcutNumber={shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null}
-              showShortcutBadge={showShortcutBadges}
-              canCopyBranchName={false}
-              selectionEnabled={selectionEnabled}
-              activeWorkspaceSelection={activeWorkspaceSelection}
-              onWorkspacePress={onWorkspacePress}
-            />
-          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={tasksCollapsed ? "Expand tasks" : "Collapse tasks"}
+            accessibilityState={tasksAccessibilityState}
+            onPress={handleToggleTasksCollapsed}
+            style={styles.tasksSectionHeader}
+            testID="sidebar-tasks-collapse-toggle"
+          >
+            {tasksCollapsed ? (
+              <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />
+            ) : (
+              <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />
+            )}
+            <Text style={styles.tasksSectionTitle}>Tasks</Text>
+          </Pressable>
+          {!tasksCollapsed
+            ? taskWorkspaces.map((workspace) => (
+                <MemoWorkspaceRowItem
+                  key={workspace.workspaceKey}
+                  workspace={workspace}
+                  subtitle={
+                    showHostLabels
+                      ? (hostLabelByServerId.get(workspace.serverId) ?? workspace.serverId)
+                      : null
+                  }
+                  shortcutNumber={shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null}
+                  showShortcutBadge={showShortcutBadges}
+                  canCopyBranchName={false}
+                  selectionEnabled={selectionEnabled}
+                  activeWorkspaceSelection={activeWorkspaceSelection}
+                  onWorkspacePress={onWorkspacePress}
+                />
+              ))
+            : null}
         </View>
       ) : null}
       {listFooterComponent}
@@ -2560,15 +2712,61 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[4],
   },
+  bulkActions: {
+    minHeight: 42,
+    paddingHorizontal: theme.spacing[3],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  bulkActionsLabel: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  bulkArchiveButton: {
+    minHeight: 30,
+    paddingHorizontal: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  bulkArchiveButtonText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  bulkClearButton: {
+    minHeight: 30,
+    paddingHorizontal: theme.spacing[2],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bulkClearButtonText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
   projectListContainer: {
     width: "100%",
   },
   tasksSection: {
     marginTop: theme.spacing[4],
   },
-  tasksSectionTitle: {
+  tasksSectionHeader: {
+    minHeight: 30,
     paddingHorizontal: theme.spacing[2],
-    paddingBottom: theme.spacing[1],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+  },
+  tasksSectionTitle: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.xs,

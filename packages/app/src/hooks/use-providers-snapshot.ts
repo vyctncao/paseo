@@ -59,6 +59,7 @@ export async function refreshAndApplyProvidersSnapshot(input: {
 }
 
 export type SelectorOpenRefetchDecision = "refetch-stale" | "refetch-always";
+export const PROVIDER_MODEL_AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
 
 export function selectorOpenRefetchDecision(input: {
   entries: ProviderSnapshotEntry[] | undefined;
@@ -72,6 +73,17 @@ export function selectorOpenRefetchDecision(input: {
     return "refetch-always";
   }
   return "refetch-stale";
+}
+
+export function shouldAutoRefreshProviderModels(
+  entry: ProviderSnapshotEntry | undefined,
+  now = Date.now(),
+): boolean {
+  if (!entry || entry.status !== "ready") {
+    return false;
+  }
+  const fetchedAt = entry.fetchedAt ? Date.parse(entry.fetchedAt) : Number.NaN;
+  return !Number.isFinite(fetchedAt) || now - fetchedAt >= PROVIDER_MODEL_AUTO_REFRESH_INTERVAL_MS;
 }
 
 interface UseProvidersSnapshotResult {
@@ -143,6 +155,13 @@ export function useProvidersSnapshot(
 
   const refetchIfStale = useCallback(
     (selectedProvider?: AgentProvider | null) => {
+      const selectedEntry = snapshotQuery.data?.entries.find(
+        (entry) => entry.provider === selectedProvider,
+      );
+      if (selectedProvider && shouldAutoRefreshProviderModels(selectedEntry)) {
+        void refreshSnapshot([selectedProvider]);
+        return;
+      }
       const decision = selectorOpenRefetchDecision({
         entries: snapshotQuery.data?.entries,
         selectedProvider,
@@ -153,7 +172,7 @@ export function useProvidersSnapshot(
       }
       void queryClient.refetchQueries({ queryKey, type: "active", stale: true });
     },
-    [queryClient, queryKey, snapshotQuery.data?.entries],
+    [queryClient, queryKey, refreshSnapshot, snapshotQuery.data?.entries],
   );
 
   return {

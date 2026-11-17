@@ -1,9 +1,9 @@
 import type { AgentPetLifecycle } from "@/components/pet/pet-sprite";
 
 /**
- * Groups a workspace's open chats into the rows the sidebar renders beneath their
- * branch. A lone chat is omitted because the workspace row already opens it; nested
- * rows are only needed when there are multiple chats to switch between.
+ * Groups a workspace's open chats into the rows the sidebar may render beneath its
+ * branch. Workspace rows already represent their original chat, so additional agent
+ * tabs stay in the workspace tab strip instead of duplicating navigation here.
  *
  * This is deliberately a pure projection over data the workspace already has. Row
  * activation calls the layout store's existing `focusTab`, the same action the tab
@@ -43,7 +43,7 @@ export interface SidebarWorkspaceGroup {
   /** Branch when present, else the workspace's display name. */
   label: string;
   isCollapsed: boolean;
-  /** Empty when collapsed or when the workspace has only one chat. */
+  /** Empty for workspace summaries; populated only for direct project chat lists. */
   rows: SidebarAgentRow[];
   /** Always the true count, even while collapsed. */
   agentCount: number;
@@ -81,10 +81,10 @@ export function buildSidebarWorkspaceGroup(input: {
   workspace: SidebarWorkspaceGroupInput;
   activeTabId: string | null;
   collapsedWorkspaceIds: ReadonlySet<string>;
-  /** Project-level chat lists have no workspace row to represent a lone remaining chat. */
-  showLoneChat?: boolean;
+  /** Direct project chat lists have no workspace row, so they render their agent rows. */
+  showAgentRows?: boolean;
 }): SidebarWorkspaceGroup {
-  const { workspace, activeTabId, collapsedWorkspaceIds, showLoneChat = false } = input;
+  const { workspace, activeTabId, collapsedWorkspaceIds, showAgentRows = false } = input;
   const isCollapsed = collapsedWorkspaceIds.has(workspace.workspaceId);
 
   const sorted = [...workspace.agents].sort((left, right) => {
@@ -99,7 +99,7 @@ export function buildSidebarWorkspaceGroup(input: {
     label: workspace.branch ?? workspace.displayName,
     isCollapsed,
     rows:
-      isCollapsed || (!showLoneChat && sorted.length <= 1)
+      isCollapsed || !showAgentRows
         ? []
         : sorted.map((agent) => toSidebarAgentRow(agent, activeTabId)),
     agentCount: workspace.agents.length,

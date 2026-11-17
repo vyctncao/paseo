@@ -1,6 +1,35 @@
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { PickerItem } from "./new-workspace-picker-item";
 
+export function resolveNewWorkspacePickerItem(input: {
+  manualItem: PickerItem | null;
+  rememberedBaseRef: string | null;
+}): PickerItem | null {
+  if (input.manualItem) {
+    return input.manualItem;
+  }
+
+  const rememberedBaseRef = input.rememberedBaseRef?.trim() ?? "";
+  return rememberedBaseRef ? { kind: "branch", name: rememberedBaseRef } : null;
+}
+
+export function resolveWorkspaceBaseRef(input: {
+  selectedItem: PickerItem | null;
+  currentBranch: string | null;
+}): string | null {
+  if (input.selectedItem?.kind === "branch") {
+    const branch = input.selectedItem.name.trim();
+    return branch || null;
+  }
+  if (input.selectedItem?.kind === "github-pr") {
+    const headRefName = input.selectedItem.item.headRefName?.trim() ?? "";
+    return headRefName || null;
+  }
+
+  const currentBranch = input.currentBranch?.trim() ?? "";
+  return currentBranch || null;
+}
+
 // The picker "owns" at most one PR attachment at a time. When the user selects
 // a different item the previously-owned PR is removed before the new one is added.
 // User-added attachments for other PRs/issues are left untouched.

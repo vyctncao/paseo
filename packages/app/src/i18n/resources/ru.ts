@@ -1122,6 +1122,7 @@ export const ru: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "Выбрать папку…",
     placeholder: "Введите путь к каталогу...",
     opening: "Открытие проекта...",
     searching: "Идет поиск...",

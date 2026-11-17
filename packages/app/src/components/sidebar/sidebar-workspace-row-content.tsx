@@ -5,6 +5,7 @@ import {
   Text,
   View,
   type GestureResponderEvent,
+  type PointerEvent as RNPointerEvent,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -67,17 +68,28 @@ type SidebarWorkspaceScriptIconKind = "service" | "command";
 export function SidebarWorkspaceRowFrame({
   workspace,
   isDragging = false,
+  onPointerEnter,
   children,
 }: {
   workspace: SidebarWorkspaceEntry;
   isDragging?: boolean;
+  onPointerEnter?: (event: RNPointerEvent) => void;
   children: (input: {
     isHovered: boolean;
-    hoverHandlers: { onPointerEnter: () => void; onPointerLeave: () => void };
+    hoverHandlers: {
+      onPointerEnter: (event: RNPointerEvent) => void;
+      onPointerLeave: () => void;
+    };
   }) => ReactNode;
 }) {
   const [isHovered, setIsHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerEnter = useCallback(
+    (event: RNPointerEvent) => {
+      setIsHovered(true);
+      onPointerEnter?.(event);
+    },
+    [onPointerEnter],
+  );
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
   const hoverHandlers = useMemo(
     () => ({ onPointerEnter: handlePointerEnter, onPointerLeave: handlePointerLeave }),

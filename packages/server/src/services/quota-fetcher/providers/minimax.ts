@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
-import type { ProviderUsage, ProviderUsageWindow } from "../../../server/messages.js";
+import type {
+  ProviderUsage,
+  ProviderUsageBalance,
+  ProviderUsageWindow,
+} from "../../../server/messages.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -94,10 +98,31 @@ function epochMsToIso(value: number | null | undefined): string | null {
   return new Date(value).toISOString();
 }
 
-function toneForStatus(status: number | null | undefined): ProviderUsageWindow["tone"] {
+function toneForStatus(status: number | null | undefined): ProviderUsageBalance["tone"] {
   if (status === 2) return "danger";
   if (status === 3) return "default";
   return "ok";
+}
+
+function toCountBalance(input: {
+  id: string;
+  label: string;
+  total: number | null | undefined;
+  used: number | null | undefined;
+  resetsAt: number | null | undefined;
+  status: number | null | undefined;
+}): ProviderUsageBalance | null {
+  if (typeof input.total !== "number" || typeof input.used !== "number") return null;
+  return {
+    id: input.id,
+    label: input.label,
+    used: input.used,
+    remaining: Math.max(0, input.total - input.used),
+    limit: input.total,
+    unit: "requests",
+    resetsAt: epochMsToIso(input.resetsAt),
+    tone: toneForStatus(input.status),
+  };
 }
 
 function toIntervalWindow(
@@ -106,6 +131,7 @@ function toIntervalWindow(
 ): ProviderUsageWindow | null {
   const total = model.current_interval_total_count ?? null;
   const used = model.current_interval_usage_count ?? null;
+  if (typeof total === "number" && typeof used === "number") return null;
   const remainingPercent = model.current_interval_remaining_percent ?? null;
   const usedPct =
     typeof remainingPercent === "number" && Number.isFinite(remainingPercent)
@@ -127,6 +153,7 @@ function toIntervalWindow(
 function toWeeklyWindow(modelName: string, model: MiniMaxModelRemain): ProviderUsageWindow | null {
   const total = model.current_weekly_total_count ?? null;
   const used = model.current_weekly_usage_count ?? null;
+  if (typeof total === "number" && typeof used === "number") return null;
   const remainingPercent = model.current_weekly_remaining_percent ?? null;
   let usedPct: number | null = null;
   if (typeof remainingPercent === "number" && Number.isFinite(remainingPercent)) {
@@ -184,10 +211,29 @@ export class MiniMaxQuotaProvider implements ProviderUsageFetcher {
     const models = resp.model_remains ?? [];
 
     const windows: ProviderUsageWindow[] = [];
+    const balances: ProviderUsageBalance[] = [];
     for (const model of models) {
       const name = model.model_name ?? "token-plan";
+      const intervalBalance = toCountBalance({
+        id: `interval_${name}`,
+        label: `${name} · Interval`,
+        total: model.current_interval_total_count,
+        used: model.current_interval_usage_count,
+        resetsAt: model.end_time,
+        status: model.current_interval_status,
+      });
+      if (intervalBalance) balances.push(intervalBalance);
       const intervalWindow = toIntervalWindow(name, model);
       if (intervalWindow) windows.push(intervalWindow);
+      const weeklyBalance = toCountBalance({
+        id: `weekly_${name}`,
+        label: `${name} · Weekly`,
+        total: model.current_weekly_total_count,
+        used: model.current_weekly_usage_count,
+        resetsAt: model.weekly_end_time,
+        status: model.current_weekly_status,
+      });
+      if (weeklyBalance) balances.push(weeklyBalance);
       const weeklyWindow = toWeeklyWindow(name, model);
       if (weeklyWindow) windows.push(weeklyWindow);
     }
@@ -195,10 +241,10 @@ export class MiniMaxQuotaProvider implements ProviderUsageFetcher {
     return {
       providerId: this.providerId,
       displayName: this.displayName,
-      status: windows.length > 0 ? "available" : "unavailable",
+      status: windows.length > 0 || balances.length > 0 ? "available" : "unavailable",
       planLabel: null,
       windows,
-      balances: [],
+      balances,
       details: [],
       error: null,
     };

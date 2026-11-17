@@ -3961,6 +3961,7 @@ export const ProviderUsageStatusSchema = z.enum(["available", "unavailable", "er
 export const ProviderUsageWindowSchema = z.object({
   id: z.string(),
   label: z.string(),
+  displayMode: z.enum(["used", "remaining"]).optional(),
   usedPct: z.number().nullable().optional(),
   remainingPct: z.number().nullable().optional(),
   resetsAt: z.string().nullable().optional(),

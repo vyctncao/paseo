@@ -1110,6 +1110,7 @@ export const ja: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "フォルダを選択…",
     placeholder: "ディレクトリパスを入力...",
     opening: "プロジェクトを開いています...",
     searching: "検索中...",

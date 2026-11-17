@@ -1132,6 +1132,7 @@ export const es: TranslationResources = {
     },
   },
   projectPicker: {
+    chooseFolder: "Elegir carpeta…",
     placeholder: "Escriba una ruta de directorio...",
     opening: "Proyecto de apertura...",
     searching: "Buscando...",

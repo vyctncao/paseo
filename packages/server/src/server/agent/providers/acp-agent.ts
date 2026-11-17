@@ -592,11 +592,13 @@ export function deriveModesFromACP(
 ): { modes: AgentMode[]; currentModeId: string | null } {
   if (modeState?.availableModes?.length) {
     return {
-      modes: modeState.availableModes.map((mode) => ({
-        id: mode.id,
-        label: mode.name,
-        description: mode.description ?? undefined,
-      })),
+      modes: modeState.availableModes.map((mode) =>
+        decorateACPMode({
+          id: mode.id,
+          label: mode.name,
+          description: mode.description ?? undefined,
+        }),
+      ),
       currentModeId: modeState.currentModeId ?? null,
     };
   }
@@ -605,11 +607,13 @@ export function deriveModesFromACP(
   if (modeOption) {
     const flatOptions = flattenSelectOptions(modeOption.options);
     return {
-      modes: flatOptions.map((option) => ({
-        id: option.value,
-        label: option.name,
-        description: option.description ?? undefined,
-      })),
+      modes: flatOptions.map((option) =>
+        decorateACPMode({
+          id: option.value,
+          label: option.name,
+          description: option.description ?? undefined,
+        }),
+      ),
       currentModeId: modeOption.currentValue,
     };
   }
@@ -617,6 +621,18 @@ export function deriveModesFromACP(
   return {
     modes: fallbackModes,
     currentModeId: null,
+  };
+}
+
+function decorateACPMode(mode: AgentMode): AgentMode {
+  if (mode.id !== "bypassPermissions" && mode.id !== "bypass_permissions") {
+    return mode;
+  }
+  return {
+    ...mode,
+    icon: "ShieldAlert",
+    colorTier: "dangerous",
+    isUnattended: true,
   };
 }
 

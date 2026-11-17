@@ -28,6 +28,7 @@ export interface ArchiveWorkspaceInput {
 
 export interface WorkspaceArchiveController {
   archive: () => void;
+  archiveAsync: () => Promise<boolean>;
 }
 
 export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArchiveController {
@@ -48,7 +49,7 @@ export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArch
   const toast = useToast();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
 
-  const archiveWorktreeRecord = useCallback(() => {
+  const archiveWorktreeRecord = useCallback(async (): Promise<boolean> => {
     let archiveDirectory: string;
     try {
       archiveDirectory = requireWorkspaceDirectory({
@@ -61,26 +62,30 @@ export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArch
           ? error.message
           : t("sidebar.workspace.toasts.workspacePathUnavailable"),
       );
-      return;
+      return false;
     }
     onArchiveStarted();
-    void archiveWorktree({
-      serverId,
-      cwd: archiveDirectory,
-      worktreePath: archiveDirectory,
-      workspaceId,
-    }).catch((error) => {
+    try {
+      await archiveWorktree({
+        serverId,
+        cwd: archiveDirectory,
+        worktreePath: archiveDirectory,
+        workspaceId,
+      });
+      return true;
+    } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t("sidebar.workspace.toasts.archiveFailed"),
       );
-    });
+      return false;
+    }
   }, [archiveWorktree, onArchiveStarted, serverId, t, toast, workspaceDirectory, workspaceId]);
 
-  const archiveNonWorktreeRecord = useCallback(async () => {
+  const archiveNonWorktreeRecord = useCallback(async (): Promise<boolean> => {
     const client = getHostRuntimeStore().getClient(serverId);
     if (!client) {
       toast.error(t("sidebar.workspace.toasts.hostDisconnected"));
-      return;
+      return false;
     }
     onSetHiding?.(true);
     try {
@@ -92,35 +97,27 @@ export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArch
         },
         afterHide: onArchiveStarted,
       });
+      return true;
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t("sidebar.workspace.toasts.hideFailed"),
       );
+      return false;
     } finally {
       onSetHiding?.(false);
     }
   }, [onArchiveStarted, onSetHiding, serverId, t, toast, workspaceId]);
 
-  const archive = useCallback(() => {
-    void (async () => {
-      if (workspaceKind === "worktree") {
-        const confirmed = await confirmRiskyWorktreeArchive(
-          {
-            worktreeName: name,
-            isDirty,
-            aheadOfOrigin,
-            diffStat,
-          },
-          warningLabels,
-        );
-        if (!confirmed) {
-          return;
-        }
-        archiveWorktreeRecord();
-        return;
-      }
-      await archiveNonWorktreeRecord();
-    })();
+  const archiveAsync = useCallback(async (): Promise<boolean> => {
+    if (workspaceKind === "worktree") {
+      const confirmed = await confirmRiskyWorktreeArchive(
+        { worktreeName: name, isDirty, aheadOfOrigin, diffStat },
+        warningLabels,
+      );
+      if (!confirmed) return false;
+      return await archiveWorktreeRecord();
+    }
+    return await archiveNonWorktreeRecord();
   }, [
     aheadOfOrigin,
     archiveNonWorktreeRecord,
@@ -132,7 +129,12 @@ export function useWorkspaceArchive(input: ArchiveWorkspaceInput): WorkspaceArch
     workspaceKind,
   ]);
 
+  const archive = useCallback(() => {
+    void archiveAsync();
+  }, [archiveAsync]);
+
   return {
     archive,
+    archiveAsync,
   };
 }

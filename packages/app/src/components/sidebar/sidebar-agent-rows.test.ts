@@ -68,17 +68,15 @@ describe("buildSidebarWorkspaceGroup", () => {
     expect(directory.label).toBe("stratton-internal");
   });
 
-  it("renders a row per chat with its folder and active flag", () => {
+  it("keeps additional workspace agents in the tab strip instead of the sidebar", () => {
     const group = buildSidebarWorkspaceGroup({
       workspace,
       activeTabId: "b",
       collapsedWorkspaceIds: new Set(),
     });
 
-    expect(group.rows.map((row) => row.tabId)).toEqual(["a", "b"]);
-    expect(group.rows.every((row) => row.folder === "Stratton-internal")).toBe(true);
-    expect(group.rows.find((row) => row.tabId === "b")?.isActive).toBe(true);
-    expect(group.rows.find((row) => row.tabId === "a")?.isActive).toBe(false);
+    expect(group.rows).toEqual([]);
+    expect(group.agentCount).toBe(2);
   });
 
   it("omits a lone chat because the workspace row already opens it", () => {
@@ -97,7 +95,7 @@ describe("buildSidebarWorkspaceGroup", () => {
       workspace: { ...workspace, agents: [agent("remaining")] },
       activeTabId: "remaining",
       collapsedWorkspaceIds: new Set(),
-      showLoneChat: true,
+      showAgentRows: true,
     });
 
     expect(group.rows.map((row) => row.tabId)).toEqual(["remaining"]);
@@ -116,6 +114,7 @@ describe("buildSidebarWorkspaceGroup", () => {
       },
       activeTabId: null,
       collapsedWorkspaceIds: new Set(),
+      showAgentRows: true,
     });
 
     expect(group.rows.map((row) => row.tabId)).toEqual(["new", "mid", "old"]);

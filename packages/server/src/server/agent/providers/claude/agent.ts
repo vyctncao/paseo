@@ -32,7 +32,9 @@ import {
 import {
   findClaudeModel,
   getClaudeModelsWithSettings,
+  mergeClaudeSdkModels,
   normalizeClaudeRuntimeModelId,
+  type ClaudeSdkModelInfo,
 } from "./models.js";
 import { CLAUDE_ULTRACODE_THINKING_OPTION_ID } from "./model-manifest.js";
 import { parsePartialJsonObject } from "./partial-json.js";
@@ -359,6 +361,7 @@ interface ClaudeAgentClientOptions {
   queryFactory?: ClaudeQueryFactory;
   resolveBinary?: () => Promise<string>;
   configDir?: string;
+  discoverSdkModels?: (options: FetchCatalogOptions) => Promise<readonly ClaudeSdkModelInfo[]>;
 }
 
 interface ClaudeAgentSessionOptions {
@@ -1413,6 +1416,7 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
   private readonly configDir?: string;
+  private readonly discoverSdkModelsOverride?: ClaudeAgentClientOptions["discoverSdkModels"];
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
@@ -1421,6 +1425,7 @@ export class ClaudeAgentClient implements AgentClient {
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary ?? (() => resolveClaudeBinary(this.runtimeSettings));
     this.configDir = options.configDir;
+    this.discoverSdkModelsOverride = options.discoverSdkModels;
   }
 
   async createSession(
@@ -1469,10 +1474,82 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
-  async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    const models = await getClaudeModelsWithSettings(this.logger, this.configDir);
-    return { models, modes: DEFAULT_MODES };
+  async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
+    const configuredModels = await getClaudeModelsWithSettings(this.logger, this.configDir);
+    const sdkModels = await this.discoverSdkModels(options);
+    return {
+      models: mergeClaudeSdkModels(configuredModels, sdkModels),
+      modes: DEFAULT_MODES,
+    };
+  }
+
+  private async discoverSdkModels(
+    options: FetchCatalogOptions,
+  ): Promise<readonly ClaudeSdkModelInfo[]> {
+    if (this.discoverSdkModelsOverride) {
+      return this.discoverSdkModelsOverride(options);
+    }
+
+    const cwd = options.scope === "workspace" ? options.cwd : os.homedir();
+    const timeoutMs = Math.min(options.timeoutMs ?? 15_000, 15_000);
+    let catalogQuery: Query | null = null;
+    let catalogChildProcess: ChildProcess | null = null;
+
+    try {
+      const claudeBinary = await this.resolveBinary();
+      const prompt = (async function* emptyPrompt(): AsyncGenerator<
+        SDKUserMessage,
+        void,
+        undefined
+      > {})();
+      catalogQuery = claudeQuery(
+        {
+          prompt,
+          options: {
+            cwd,
+            includePartialMessages: false,
+            permissionMode: "plan",
+            settingSources: CLAUDE_SETTING_SOURCES,
+            pathToClaudeCodeExecutable: claudeBinary,
+            ...(this.configDir
+              ? { env: { ...process.env, CLAUDE_CONFIG_DIR: this.configDir } }
+              : {}),
+            stderr: (data: string) => {
+              this.logger.debug({ stderr: data.trim() }, "Claude model discovery stderr");
+            },
+          },
+        },
+        {
+          runtimeSettings: this.runtimeSettings,
+          queryFactory: this.queryFactory,
+          onChildProcess: (child) => {
+            catalogChildProcess = child;
+          },
+        },
+      );
+
+      return (await withTimeout(
+        catalogQuery.supportedModels(),
+        timeoutMs,
+        `Timed out discovering Claude models after ${timeoutMs}ms`,
+      )) as ClaudeSdkModelInfo[];
+    } catch (error) {
+      this.logger.debug({ err: error }, "Failed to discover models from Claude Code");
+      return [];
+    } finally {
+      catalogQuery?.close();
+      await catalogQuery?.return?.().catch(() => {
+        // The process may already be closed after an initialization failure.
+      });
+      if (catalogChildProcess) {
+        await terminateWithTreeKill(catalogChildProcess, {
+          gracefulTimeoutMs: 1_000,
+          forceTimeoutMs: 1_000,
+        }).catch(() => {
+          // The SDK normally closes its child during query.return().
+        });
+      }
+    }
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {

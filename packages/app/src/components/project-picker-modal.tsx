@@ -12,9 +12,12 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Folder } from "lucide-react-native";
+import { Folder, FolderOpen } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { getDesktopHost } from "@/desktop/host";
+import { chooseProjectDirectory } from "@/desktop/project-directory-picker";
 import { getOpenProjectFailureReason, type OpenProjectFailureReason } from "@/hooks/open-project";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useProjectPickerStore } from "@/stores/project-picker-store";
@@ -27,6 +30,50 @@ interface PathRowProps {
   option: ProjectPickerOption;
   active: boolean;
   onSelect: (path: string) => void;
+}
+
+interface ChooseFolderRowProps {
+  disabled: boolean;
+  onPress: () => void;
+}
+
+function ChooseFolderRow({ disabled, onPress }: ChooseFolderRowProps) {
+  const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const [focused, setFocused] = useState(false);
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
+  const pressableStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.chooseFolderRow,
+      (Boolean(hovered) || pressed) && {
+        backgroundColor: theme.colors.surface1,
+      },
+      focused && styles.chooseFolderRowFocused,
+      disabled && styles.rowDisabled,
+    ],
+    [disabled, focused, theme.colors.surface1],
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("projectPicker.chooseFolder")}
+      disabled={disabled}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPress={onPress}
+      style={pressableStyle}
+      testID="project-picker-choose-folder"
+    >
+      <View style={styles.rowContent}>
+        <View style={styles.iconSlot}>
+          <FolderOpen size={16} strokeWidth={2.2} color={theme.colors.foregroundMuted} />
+        </View>
+        <Text style={styles.chooseFolderText}>{t("projectPicker.chooseFolder")}</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function PathRow({ option, active, onSelect }: PathRowProps) {
@@ -71,6 +118,7 @@ function PathRow({ option, active, onSelect }: PathRowProps) {
 }
 
 interface ProjectPickerResultsProps {
+  canChooseFolder: boolean;
   options: ProjectPickerOption[];
   activeIndex: number;
   isSubmitting: boolean;
@@ -79,10 +127,12 @@ interface ProjectPickerResultsProps {
   isSearching: boolean;
   emptyTextStyle: StyleProp<TextStyle>;
   errorTextStyle: StyleProp<TextStyle>;
+  onChooseFolder: () => void;
   onSelect: (path: string) => void;
 }
 
 function ProjectPickerResults({
+  canChooseFolder,
   options,
   activeIndex,
   isSubmitting,
@@ -91,6 +141,7 @@ function ProjectPickerResults({
   isSearching,
   emptyTextStyle,
   errorTextStyle,
+  onChooseFolder,
   onSelect,
 }: ProjectPickerResultsProps) {
   const { t } = useTranslation();
@@ -103,6 +154,9 @@ function ProjectPickerResults({
       keyboardShouldPersistTaps="always"
       showsVerticalScrollIndicator={false}
     >
+      {canChooseFolder ? (
+        <ChooseFolderRow disabled={isSubmitting} onPress={onChooseFolder} />
+      ) : null}
       {isSubmitting ? <Text style={emptyTextStyle}>{t("projectPicker.opening")}</Text> : null}
       {!isSubmitting && openErrorMessage ? (
         <Text style={errorTextStyle}>{openErrorMessage}</Text>
@@ -139,6 +193,9 @@ export function ProjectPickerModal() {
   const close = useProjectPickerStore((state) => state.close);
   const serverId = request?.serverId ?? null;
   const open = request !== null;
+  const isLocalDaemon = useIsLocalDaemon(serverId ?? "");
+  const desktopDialog = getDesktopHost()?.dialog;
+  const canChooseFolder = isLocalDaemon && typeof desktopDialog?.open === "function";
 
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
@@ -231,6 +288,28 @@ export function ProjectPickerModal() {
     setActiveIndex(0);
     setOpenErrorReason(null);
   }, []);
+
+  const handleChooseFolder = useCallback(() => {
+    void (async () => {
+      try {
+        const selectedPath = await chooseProjectDirectory(
+          desktopDialog,
+          {
+            title: t("projectPicker.chooseFolder"),
+            defaultPath: query.trim() || recommendedPaths[0],
+          },
+        );
+        if (!selectedPath) return;
+
+        setQuery(selectedPath);
+        setActiveIndex(0);
+        setOpenErrorReason(null);
+        await handleSelectPath(selectedPath);
+      } catch {
+        setOpenErrorReason("open_failed");
+      }
+    })();
+  }, [desktopDialog, handleSelectPath, query, recommendedPaths, t]);
 
   useEffect(() => {
     if (open) {
@@ -346,6 +425,7 @@ export function ProjectPickerModal() {
           </View>
 
           <ProjectPickerResults
+            canChooseFolder={canChooseFolder}
             options={options}
             activeIndex={activeIndex}
             isSubmitting={isSubmitting}
@@ -354,6 +434,7 @@ export function ProjectPickerModal() {
             isSearching={isSearching}
             emptyTextStyle={emptyTextStyle}
             errorTextStyle={errorTextStyle}
+            onChooseFolder={handleChooseFolder}
             onSelect={handleSelectPath}
           />
         </View>
@@ -402,6 +483,21 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[2],
   },
+  chooseFolderRow: {
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  chooseFolderRowFocused: {
+    outlineColor: theme.colors.accent,
+    outlineOffset: -2,
+    outlineStyle: "solid",
+    outlineWidth: 2,
+  } as object,
+  rowDisabled: {
+    opacity: 0.5,
+  },
   rowContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -419,6 +515,12 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 20,
     flex: 1,
     flexShrink: 1,
+  },
+  chooseFolderText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: "500",
+    lineHeight: 20,
   },
   rowActionText: {
     fontSize: theme.fontSize.xs,

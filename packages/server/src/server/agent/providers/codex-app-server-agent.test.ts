@@ -20,6 +20,7 @@ import {
   CodexAppServerAgentClient,
   CodexAppServerAgentSession,
   codexAppServerTurnInputFromPrompt,
+  formatCodexThinkingOptionLabel,
   listCodexSkills,
   mapCodexPatchNotificationToToolCall,
   mapCodexPlanToToolCall,
@@ -43,6 +44,11 @@ interface CollaborationModeRecord {
   reasoning_effort?: string | null;
   developer_instructions?: string | null;
 }
+
+test("labels Codex xhigh as the Ultra Code equivalent", () => {
+  expect(formatCodexThinkingOptionLabel("xhigh")).toBe("Ultra Code (xhigh)");
+  expect(formatCodexThinkingOptionLabel("high")).toBe("High");
+});
 
 interface CodexSessionTestAccess {
   ensureThreadLoaded(): Promise<void>;

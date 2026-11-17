@@ -1,31 +1,18 @@
 import React, { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { AgentPet } from "@/components/pet/agent-pet";
 import type { SidebarAgentRow as SidebarAgentRowModel } from "./sidebar-agent-rows";
 
 export interface SidebarAgentRowProps {
   row: SidebarAgentRowModel;
-  /** Spritesheet for the pet assigned to this chat's provider; null when none is installed. */
-  petSpritesheetUrl: string | null;
-  petRows: number;
-  petAuthorizationHeader?: string | null;
   onPress: (tabId: string) => void;
   onClose?: (tabId: string) => void;
 }
 
 /**
- * A chat, rendered beneath its branch: title and folder on the left, pet and tools
- * on the right. Replaces one anonymous icon in the desktop tab strip.
+ * A chat rendered beneath its workspace, with optional row actions on the right.
  */
-export function SidebarAgentRowView({
-  row,
-  petSpritesheetUrl,
-  petRows,
-  petAuthorizationHeader,
-  onPress,
-  onClose,
-}: SidebarAgentRowProps) {
+export function SidebarAgentRowView({ row, onPress, onClose }: SidebarAgentRowProps) {
   const handlePress = useCallback(() => onPress(row.tabId), [onPress, row.tabId]);
   const handleClose = useCallback(() => onClose?.(row.tabId), [onClose, row.tabId]);
   const accessibilityState = useMemo(() => ({ selected: row.isActive }), [row.isActive]);
@@ -53,18 +40,8 @@ export function SidebarAgentRowView({
         </Text>
       </View>
 
-      <View style={styles.tools}>
-        {petSpritesheetUrl ? (
-          <AgentPet
-            spritesheetUrl={petSpritesheetUrl}
-            rows={petRows}
-            lifecycle={row.lifecycle}
-            size={20}
-            authorizationHeader={petAuthorizationHeader}
-            accessibilityLabel={`${row.title} is ${row.lifecycle}`}
-          />
-        ) : null}
-        {onClose ? (
+      {onClose ? (
+        <View style={styles.tools}>
           <Pressable
             onPress={handleClose}
             hitSlop={8}
@@ -74,8 +51,8 @@ export function SidebarAgentRowView({
           >
             <Text style={styles.close}>×</Text>
           </Pressable>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
     </Pressable>
   );
 }

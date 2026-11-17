@@ -7,9 +7,11 @@ import { draftAgentCommandsQueryKey } from "@/hooks/agent-commands-query";
 import { applyProvidersSnapshotUpdate, type ProvidersSnapshotUpdate } from "@/data/push-router";
 import {
   fetchProvidersSnapshot,
+  PROVIDER_MODEL_AUTO_REFRESH_INTERVAL_MS,
   providersSnapshotQueryKey,
   refreshAndApplyProvidersSnapshot,
   selectorOpenRefetchDecision,
+  shouldAutoRefreshProviderModels,
   type ProvidersSnapshotClient,
 } from "./use-providers-snapshot";
 
@@ -345,5 +347,41 @@ describe("selectorOpenRefetchDecision", () => {
         selectedProvider: "codex",
       }),
     ).toBe("refetch-stale");
+  });
+});
+
+describe("shouldAutoRefreshProviderModels", () => {
+  const now = Date.parse("2026-07-27T12:00:00.000Z");
+
+  it("refreshes ready provider models after the automatic refresh interval", () => {
+    expect(
+      shouldAutoRefreshProviderModels(
+        {
+          ...codexEntry("ready", [readyCodexModel]),
+          fetchedAt: new Date(now - PROVIDER_MODEL_AUTO_REFRESH_INTERVAL_MS).toISOString(),
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a recently fetched ready provider catalog", () => {
+    expect(
+      shouldAutoRefreshProviderModels(
+        {
+          ...codexEntry("ready", [readyCodexModel]),
+          fetchedAt: new Date(now - PROVIDER_MODEL_AUTO_REFRESH_INTERVAL_MS + 1).toISOString(),
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("refreshes ready catalogs without a provider fetch timestamp", () => {
+    expect(shouldAutoRefreshProviderModels(codexEntry("ready", [readyCodexModel]), now)).toBe(true);
+  });
+
+  it("does not start another refresh while a provider is loading", () => {
+    expect(shouldAutoRefreshProviderModels(codexEntry("loading"), now)).toBe(false);
   });
 });

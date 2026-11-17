@@ -1104,6 +1104,7 @@ export const en = {
   },
   projectPicker: {
     placeholder: "Type a directory path...",
+    chooseFolder: "Choose folder…",
     opening: "Opening project...",
     searching: "Searching...",
     empty: "Start typing a path",

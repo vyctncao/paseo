@@ -64,6 +64,10 @@ import {
 } from "@/stores/workspace-draft-submission-store";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
+import {
+  getWorkspaceBaseRefPreference,
+  mergeWorkspaceBaseRefPreference,
+} from "@/create-agent-preferences/preferences";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -102,7 +106,12 @@ import {
   resolveDisplayedPickerItem,
   shouldEnableWorktreeForPickerItem,
 } from "./new-workspace-isolation";
-import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
+import {
+  findCheckoutHintPrAttachment,
+  resolveNewWorkspacePickerItem,
+  resolveWorkspaceBaseRef,
+  syncPickerPrAttachment,
+} from "./new-workspace-picker-state";
 import {
   resolveNewWorkspaceAutomaticServerId,
   resolveNewWorkspaceInitialServerId,
@@ -1723,6 +1732,8 @@ export function NewWorkspaceScreen({
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
   const toast = useToast();
+  const { preferences: formPreferences, updatePreferences: updateFormPreferences } =
+    useFormPreferences();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const openAddProjectPicker = useProjectPickerStore((state) => state.open);
   const {
@@ -1838,7 +1849,23 @@ export function NewWorkspaceScreen({
   const [dismissedCheckoutHintPrNumbers, setDismissedCheckoutHintPrNumbers] =
     useCheckoutHintDismissals(chatDraft.attachments);
 
-  const selectedItem = getSelectedPickerItem(manualPickerSelection);
+  const rememberedBaseRef = useMemo(
+    () =>
+      getWorkspaceBaseRefPreference({
+        preferences: formPreferences,
+        serverId: selectedServerId,
+        projectKey: selectedProject?.projectKey,
+      }),
+    [formPreferences, selectedProject?.projectKey, selectedServerId],
+  );
+  const selectedItem = useMemo(
+    () =>
+      resolveNewWorkspacePickerItem({
+        manualItem: getSelectedPickerItem(manualPickerSelection),
+        rememberedBaseRef,
+      }),
+    [manualPickerSelection, rememberedBaseRef],
+  );
 
   const withConnectedClient = useCallback(() => {
     if (!client || !isConnected) {
@@ -2123,6 +2150,23 @@ export function NewWorkspaceScreen({
               createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
             });
       }
+      const baseRef = resolveWorkspaceBaseRef({ selectedItem, currentBranch });
+      if (selectedProject && baseRef) {
+        try {
+          await updateFormPreferences((current) =>
+            mergeWorkspaceBaseRefPreference({
+              preferences: current,
+              serverId: selectedServerId,
+              projectKey: selectedProject.projectKey,
+              baseRef,
+            }),
+          );
+        } catch (error) {
+          // The workspace already exists; a preference write must not turn a
+          // successful creation into an apparent failure.
+          console.warn("[NewWorkspace] persist base branch preference failed", error);
+        }
+      }
       setCreatedWorkspace(normalizedWorkspace);
       return normalizedWorkspace;
     },
@@ -2139,6 +2183,7 @@ export function NewWorkspaceScreen({
       selectedSourceDirectory,
       supportsWorkspaceMultiplicity,
       t,
+      updateFormPreferences,
       withConnectedClient,
     ],
   );

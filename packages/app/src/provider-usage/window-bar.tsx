@@ -11,6 +11,12 @@ function resolveUsedPct(window: ProviderUsageWindow): number | null {
   return null;
 }
 
+function resolveDisplayedPct(window: ProviderUsageWindow, usedPct: number | null): number | null {
+  if (window.displayMode !== "remaining") return usedPct;
+  if (window.remainingPct != null) return window.remainingPct;
+  return usedPct == null ? null : 100 - usedPct;
+}
+
 function fillToneStyle(tone: ProviderUsageTone) {
   switch (tone) {
     case "ok":
@@ -32,9 +38,10 @@ export function ProviderUsageWindowBar({
   accentColor?: string;
 }) {
   const usedPct = resolveUsedPct(window);
+  const displayedPct = resolveDisplayedPct(window, usedPct);
   const tone = window.tone ?? deriveTone(usedPct);
 
-  const fillWidth = clampPct(usedPct ?? 0);
+  const fillWidth = clampPct(displayedPct ?? 0);
   const fillStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       styles.fill,
@@ -56,7 +63,8 @@ export function ProviderUsageWindowBar({
           {window.label}
         </Text>
         <Text style={styles.value}>
-          {usedPct != null ? formatPct(usedPct) : "—"}
+          {displayedPct != null ? formatPct(displayedPct) : "—"}
+          {displayedPct != null && window.displayMode === "remaining" ? " left" : ""}
           {trailing ? (
             <Text style={isAtRisk ? styles.atRisk : styles.reset}>{` · ${trailing}`}</Text>
           ) : null}
